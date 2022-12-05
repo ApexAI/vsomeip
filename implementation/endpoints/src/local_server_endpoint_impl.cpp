@@ -21,7 +21,7 @@
 #include "../../utility/include/utility.hpp"
 
 // Credentials
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__QNX__)
 #include "../include/credentials.hpp"
 #endif
 
@@ -53,7 +53,7 @@ local_server_endpoint_impl::local_server_endpoint_impl(
     acceptor_.listen(boost::asio::socket_base::max_connections, ec);
     boost::asio::detail::throw_error(ec, "acceptor listen");
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__QNX__)
     if (chmod(_local.path().c_str(),
             static_cast<mode_t>(_configuration->get_permissions_uds())) == -1) {
         VSOMEIP_ERROR << __func__ << ": chmod: " << strerror(errno);
@@ -82,7 +82,7 @@ local_server_endpoint_impl::local_server_endpoint_impl(
    acceptor_.assign(_local.protocol(), native_socket, ec);
    boost::asio::detail::throw_error(ec, "acceptor assign native socket");
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__QNX__)
     if (chmod(_local.path().c_str(),
             static_cast<mode_t>(_configuration->get_permissions_uds())) == -1) {
        VSOMEIP_ERROR << __func__ << ": chmod: " << strerror(errno);
@@ -254,7 +254,7 @@ void local_server_endpoint_impl::accept_cbk(
     }
 
     if (!_error) {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__QNX__)
         auto its_host = endpoint_host_.lock();
         client_t client = 0;
 

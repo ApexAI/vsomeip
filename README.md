@@ -9,6 +9,12 @@ This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+##### Attribution
+
+Parts of the changes within this fork (https://github.com/ApexAI/vsomeip) were taken from
+an existing fork at https://github.com/lixiaolia/vsomeip-qnx in accordance of the underlying
+license.
+
 ##### vsomeip Overview
 ----------------
 The vsomeip stack implements the http://some-ip.com/ (Scalable service-Oriented

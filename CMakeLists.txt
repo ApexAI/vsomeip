@@ -89,6 +89,16 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
     set(OS_CXX_FLAGS "-pthread")
 endif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "QNX")
+    set(OS "QNX")
+    set(DL_LIBRARY "")
+    set(EXPORTSYMBOLS "-Wl,-export-dynamic -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exportmap.gcc")
+    set(NO_DEPRECATED "")
+    set(OPTIMIZE "")
+    set(OS_CXX_FLAGS "-D_GLIBCXX_USE_NANOSLEEP -O -Wall -Wextra -Wformat -Wformat-security -Wconversion -fexceptions -fstrict-aliasing -fstack-protector -fasynchronous-unwind-tables -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2")
+	set(Boost_USE_STATIC_LIBS_ON)
+endif (${CMAKE_SYSTEM_NAME} STREQUAL "QNX")
+
 ################################################################################
 # Options
 ################################################################################
@@ -169,6 +179,10 @@ else()
   set(VSOMEIP_BOOST_VERSION ${Boost_VERSION})
 endif()
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "QNX")
+	set(VSOMEIP_BOOST_HELPER implementation/helper/1.70)
+endif()
+
 message( STATUS "Using boost version: ${VSOMEIP_BOOST_VERSION}" )
 if (${VSOMEIP_BOOST_VERSION} GREATER 107500)
 message( ERROR "boost version ${VSOMEIP_BOOST_VERSION} is not (yet) supported. Latest supported version is 1.74.0" )
@@ -211,7 +225,7 @@ endif ()
 # Directories
 ################################################################################
 
-include_directories(
+include_directories(BEFORE
     interface
 )
 
@@ -243,6 +257,9 @@ else()
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D${OS} ${OS_CXX_FLAGS} -g ${OPTIMIZE} -std=c++11 ${NO_DEPRECATED} ${EXPORTSYMBOLS}")
     if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android")
         set(USE_RT "rt")
+    endif()
+    if (${CMAKE_SYSTEM_NAME} STREQUAL "QNX")
+        set(USE_RT "")
     endif()
 endif()
 
@@ -590,7 +607,7 @@ if(NOT WIN32)
 endif()
 
 ##############################################################################
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android")
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "QNX")
     # build routing manager daemon (Non-Windows only)
     if (NOT MSVC)
     add_subdirectory( examples/routingmanagerd )

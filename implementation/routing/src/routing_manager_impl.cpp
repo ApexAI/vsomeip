@@ -162,7 +162,7 @@ void routing_manager_impl::init() {
 }
 
 void routing_manager_impl::start() {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__QNX__)
     boost::asio::ip::address its_multicast;
     try {
         its_multicast = boost::asio::ip::address::from_string(configuration_->get_sd_multicast());
@@ -179,6 +179,7 @@ void routing_manager_impl::start() {
             this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     netlink_connector_->start();
 #else
+    if (!routing_running_)
     {
         std::lock_guard<std::mutex> its_lock(pending_sd_offers_mutex_);
         start_ip_routing();
@@ -249,7 +250,7 @@ void routing_manager_impl::stop() {
         std::lock_guard<std::mutex> its_lock(version_log_timer_mutex_);
         version_log_timer_.cancel();
     }
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__QNX__)
     {
         boost::system::error_code ec;
         std::lock_guard<std::mutex> its_lock(memory_log_timer_mutex_);
@@ -428,6 +429,11 @@ bool routing_manager_impl::offer_service(client_t _client,
     stub_->on_offer_service(_client, _service, _instance, _major, _minor);
     on_availability(_service, _instance, true, _major, _minor);
     erase_offer_command(_service, _instance);
+#ifdef __QNX__
+    VSOMEIP_INFO << __func__ << " " << __LINE__ << " --> start_ip_routing()";
+    std::lock_guard<std::mutex> its_lock(pending_sd_offers_mutex_);
+    start_ip_routing();
+#endif
     return true;
 }
 
