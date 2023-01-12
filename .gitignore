@@ -5,7 +5,6 @@
 /doc
 /daemon/CMakeFiles
 /examples/CMakeFiles
-/implementation/configuration/include/internal.hpp
 /test/application_tests/application_test.json
 /test/application_tests/application_test_daemon.json
 /test/application_tests/application_test_no_dispatch_threads.json

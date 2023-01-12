@@ -11,7 +11,7 @@
 #include <vsomeip/constants.hpp>
 #include <vsomeip/plugins/application_plugin.hpp>
 #include <vsomeip/internal/logger.hpp>
-#include "../implementation/configuration/include/configuration.hpp"
+#include "../../implementation/configuration/include/configuration.hpp"
 
 #include "../../implementation/plugin/include/plugin_manager_impl.hpp"
 #include "../../implementation/configuration/include/configuration_impl.hpp"

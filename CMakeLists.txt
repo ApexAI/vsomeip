@@ -519,8 +519,9 @@ configure_file (vsomeip3ConfigVersion.cmake.in "${PROJECT_BINARY_DIR}/vsomeip3Co
 # configure internal.hpp for correct version number
 configure_file (
    "${PROJECT_SOURCE_DIR}/implementation/configuration/include/internal.hpp.in"
-   "${PROJECT_SOURCE_DIR}/implementation/configuration/include/internal.hpp"
+   "${PROJECT_BINARY_DIR}/implementation/configuration/include/internal_config.hpp"
 )
+include_directories(${PROJECT_BINARY_DIR})
 
 # Install the vsomeip3Config.cmake and vsomeip3ConfigVersion.cmake
 install (
