@@ -12,7 +12,7 @@ cmake_like_configure_file(
         "DEFAULT_CONFIGURATION_FILE": "/etc/vsomeip.json",
         "DEFAULT_CONFIGURATION_FOLDER": "/etc/vsomeip",
         "VSOMEIP_BASE_PATH": "/tmp",
-        "VSOMEIP_MAJOR_VERSION" : "3",
+        "VSOMEIP_MAJOR_VERSION": "3",
         "VSOMEIP_UNICAST_ADDRESS": "127.0.0.1",
         "VSOMEIP_DIAGNOSIS_ADDRESS": "0x01",
         "VSOMEIP_ROUTING_READY_MESSAGE": "SOME/IP routing ready.",
@@ -44,7 +44,7 @@ cc_library(
         [
             "*/include",
         ],
-    ),
+    ) + ["message"],
 )
 
 cc_binary(
