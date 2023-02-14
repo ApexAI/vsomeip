@@ -1,4 +1,4 @@
-load("@//bazel:cmake_like_configure_file.bzl", "cmake_like_configure_file")
+load("@vsomeip//bazel:cmake_like_configure_file.bzl", "cmake_like_configure_file")
 
 VSOMEIP_NAME = "vsomeip3"
 
