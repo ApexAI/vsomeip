@@ -26,7 +26,7 @@
 #include "../../endpoints/include/endpoint_manager_impl.hpp"
 #include "../../utility/include/byteorder.hpp"
 #include "../../utility/include/utility.hpp"
-#include "../../implementation/message/include/payload_impl.hpp"
+#include "../../message/include/payload_impl.hpp"
 
 namespace vsomeip_v3 {
 

@@ -12,20 +12,36 @@ cc_library(
 
 cc_binary(
     name = "hello_world_service",
-    srcs = ["hello_world_service_main.cpp"],
+    srcs = [
+        "hello_world_service_main.cpp",
+        "//:libvsomeip3.so"
+    ],
     deps = [
         ":vsomeip_hello_world_service",
-        "//implementation:vsomeip3",
-        #"//implementation:vsomeip3-cfg",
+        "//interface",
+    ],
+    data = [
+        "//:vsomeip3-plugins"
+    ],
+    linkopts = [
+        "-Wl,-rpath=\\$$ORIGIN/../..,--disable-new-dtags",
     ],
 )
 
 cc_binary(
     name = "hello_world_client",
-    srcs = ["hello_world_client_main.cpp"],
+    srcs = [
+        "hello_world_client_main.cpp",
+        "//:libvsomeip3.so"
+    ],
     deps = [
         ":vsomeip_hello_world_client",
-        "//implementation:vsomeip3",
-        #"//implementation:vsomeip3-cfg",
+        "//interface",
+    ],
+    data = [
+        "//:vsomeip3-plugins"
+    ],
+    linkopts = [
+        "-Wl,-rpath=\\$$ORIGIN/../..,--disable-new-dtags",
     ],
 )

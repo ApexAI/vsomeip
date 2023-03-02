@@ -1,5 +1,5 @@
 cc_library(
-    name = "vsomeip3-interface",
+    name = "interface",
     hdrs = glob(
         [
             "**/*.hpp",
