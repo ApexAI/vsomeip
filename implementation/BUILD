@@ -1,4 +1,5 @@
 load("@vsomeip//bazel:cmake_like_configure_file.bzl", "cmake_like_configure_file")
+load("@vsomeip//bazel:version.bzl", _vsomeip_version_str = "vsomeip_version_str")
 
 cmake_like_configure_file(
     name = "config",
@@ -113,6 +114,7 @@ cc_library(
     ),
     defines = [
         "WITHOUT_SYSTEMD",
+        "VSOMEIP_VERSION=\\\"%s\\\"" % _vsomeip_version_str(),
     ],
     linkopts = [
         "-lpthread",
