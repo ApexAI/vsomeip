@@ -9,7 +9,7 @@ cc_library(
             "boost/**",
         ],
     ),
-    defines = ["BOOST_ALL_NO_LIB"],
+    local_defines = ["BOOST_ALL_NO_LIB"],
     include_prefix = ".",
 )
 

@@ -2,6 +2,7 @@ filegroup(
     name = "configuration-test-files",
     srcs = [
         "configuration-test.json",
+        "configuration-test-deprecated.json",
     ],
 )
 
