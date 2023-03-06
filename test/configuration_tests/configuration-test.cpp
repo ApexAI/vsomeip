@@ -11,7 +11,7 @@
 #include <vsomeip/constants.hpp>
 #include <vsomeip/plugins/application_plugin.hpp>
 #include <vsomeip/internal/logger.hpp>
-#include "../implementation/configuration/include/configuration.hpp"
+#include "../../implementation/configuration/include/configuration.hpp"
 
 #include "../../implementation/plugin/include/plugin_manager_impl.hpp"
 #include "../../implementation/configuration/include/configuration_impl.hpp"
@@ -20,8 +20,8 @@
 
 namespace vsomeip = vsomeip_v3;
 
-#define CONFIGURATION_FILE              "configuration-test.json"
-#define DEPRECATED_CONFIGURATION_FILE   "configuration-test-deprecated.json"
+#define CONFIGURATION_FILE              "test/configuration_tests/configuration-test.json"
+#define DEPRECATED_CONFIGURATION_FILE   "test/configuration_tests/configuration-test-deprecated.json"
 
 #define EXPECTED_UNICAST_ADDRESS        "10.0.2.15"
 
