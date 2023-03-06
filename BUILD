@@ -10,11 +10,8 @@ cc_binary(
 
 cc_binary(
     name = "libvsomeip3-cfg.so.3",
-    srcs = [
-        "libvsomeip3.so",
-    ],
     linkopts = [
-        "-Wl,-rpath=\\$$ORIGIN:\\$$ORIGIN/../implementation:\\$$ORIGIN/../../implementation",
+        "-Wl,-rpath=\\$$ORIGIN",
     ],
     linkshared = True,
     linkstatic = True,
@@ -26,11 +23,8 @@ cc_binary(
 
 cc_binary(
     name = "libvsomeip3-e2e.so.3",
-    srcs = [
-        "libvsomeip3.so",
-    ],
     linkopts = [
-        "-Wl,-rpath=\\$$ORIGIN:\\$$ORIGIN/../implementation:\\$$ORIGIN/../../implementation",
+        "-Wl,-rpath=\\$$ORIGIN",
     ],
     linkshared = True,
     linkstatic = True,
@@ -42,11 +36,8 @@ cc_binary(
 
 cc_binary(
     name = "libvsomeip3-sd.so.3",
-    srcs = [
-        "libvsomeip3.so",
-    ],
     linkopts = [
-        "-Wl,-rpath=\\$$ORIGIN:\\$$ORIGIN/../implementation:\\$$ORIGIN/../../implementation",
+        "-Wl,-rpath=\\$$ORIGIN",
     ],
     linkshared = True,
     linkstatic = True,
