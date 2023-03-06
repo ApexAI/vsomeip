@@ -239,9 +239,9 @@ link_directories(
 )
 
 if (${VSOMEIP_HOTFIX_VERSION} EQUAL 0)
-add_definitions(-DVSOMEIP_VERSION="${VSOMEIP_VERSION}")
+add_definitions(-DVSOMEIP_VERSION="${VSOMEIP_VERSION}.apexai")
 else()
-add_definitions(-DVSOMEIP_VERSION="${VSOMEIP_VERSION}.${VSOMEIP_HOTFIX_VERSION}")
+add_definitions(-DVSOMEIP_VERSION="${VSOMEIP_VERSION}.${VSOMEIP_HOTFIX_VERSION}.apexai")
 endif()
 
 if (MSVC)
