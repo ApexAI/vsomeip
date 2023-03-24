@@ -244,10 +244,15 @@ service_discovery_impl::subscribe(
     std::lock_guard<std::mutex> its_lock(subscribed_mutex_);
     auto found_service = subscribed_.find(_service);
     if (found_service != subscribed_.end()) {
+        VSOMEIP_INFO << "APEX: Found Service : " << std::hex << std::setw(4) << std::setfill('0') << _service;
         auto found_instance = found_service->second.find(_instance);
         if (found_instance != found_service->second.end()) {
+            VSOMEIP_INFO << "APEX: Found instance " << std::hex << std::setw(4) << std::setfill('0') << _instance;
+
             auto found_eventgroup = found_instance->second.find(_eventgroup);
             if (found_eventgroup != found_instance->second.end()) {
+                VSOMEIP_INFO << "APEX: Found eventgroup " << std::hex << std::setw(4) << std::setfill('0') << _eventgroup;
+
                 auto its_subscription = found_eventgroup->second;
 #ifdef VSOMEIP_ENABLE_COMPAT
                 if (!its_subscription->is_selective() && is_selective) {
@@ -265,9 +270,16 @@ service_discovery_impl::subscribe(
                             << "Subscriptions to different versions of the same "
                                     "service instance are not supported!";
                 } else if (its_subscription->is_selective()) {
+                    VSOMEIP_INFO << "APEX: Found selective subscription ";
+
                     if (its_subscription->add_client(_client)) {
+                        VSOMEIP_INFO << "APEX: Adding client " << std::hex << std::setw(4) << std::setfill('0') << _client;
+
                         its_subscription->set_state(_client,
                                 subscription_state_e::ST_NOT_ACKNOWLEDGED);
+
+                        VSOMEIP_INFO << "APEX: Sending subscribe to remote client " << std::hex << std::setw(4) << std::setfill('0') << _client;
+
                         send_subscription(its_subscription,
                                 _service, _instance, _eventgroup,
                                 _client);
@@ -317,10 +329,18 @@ service_discovery_impl::send_subscription(
 
     boost::asio::ip::address its_address;
     get_subscription_address(its_reliable, its_unreliable, its_address);
+
+    VSOMEIP_INFO << "APEX: Client IP address " << its_address.to_string();
+
     if (!its_address.is_unspecified()) {
+
         entry_data_t its_data;
         const reliability_type_e its_reliability_type =
                 get_eventgroup_reliability(_service, _instance, _eventgroup, _subscription);
+
+        VSOMEIP_INFO << "APEX: EVENT Reliability type , eventgroup: " << std::hex << _eventgroup  << " reliability type : " << static_cast<uint16_t>(its_reliability_type);
+
+
         if (its_reliability_type == reliability_type_e::RT_UNRELIABLE && its_unreliable) {
             if (its_unreliable->is_established()) {
                 its_data = create_eventgroup_entry(_service, _instance,
@@ -362,6 +382,8 @@ service_discovery_impl::send_subscription(
             its_messages.push_back(its_current_message);
 
             add_entry_data(its_messages, its_data);
+
+            VSOMEIP_INFO << "APEX: Serializing and sending message " ;
 
             serialize_and_send(its_messages, its_address);
         }

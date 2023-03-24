@@ -606,6 +606,15 @@ void routing_manager_impl::subscribe(client_t _client, uid_t _uid, gid_t _gid,
         routing_manager_base::set_incoming_subscription_state(_client, _service, _instance,
                 _eventgroup, _event, subscription_state_e::IS_SUBSCRIBING);
 #endif
+
+        VSOMEIP_INFO << "APEX: SUBSCRIBE (LOCAL CLIENT)("
+                     << std::hex << std::setw(4) << std::setfill('0') << _client <<"): ["
+                     << std::hex << std::setw(4) << std::setfill('0') << _service << "."
+                     << std::hex << std::setw(4) << std::setfill('0') << _instance << "."
+                     << std::hex << std::setw(4) << std::setfill('0') << _eventgroup << ":"
+                     << std::hex << std::setw(4) << std::setfill('0') << _event << ":"
+                     << std::dec << (uint16_t)_major << "]";
+
         auto self = shared_from_this();
         host_->on_subscription(_service, _instance, _eventgroup, _client, _uid, _gid, true,
             [this, self, _client, _uid, _gid, _service, _instance, _eventgroup,
@@ -620,6 +629,13 @@ void routing_manager_impl::subscribe(client_t _client, uid_t _uid, gid_t _gid,
                 return;
             } else {
                 stub_->send_subscribe_ack(_client, _service, _instance, _eventgroup, _event);
+                VSOMEIP_INFO << "APEX: Sending SUBSCRIBE ACK"
+                             << std::hex << std::setw(4) << std::setfill('0') << _client <<"): ["
+                             << std::hex << std::setw(4) << std::setfill('0') << _service << "."
+                             << std::hex << std::setw(4) << std::setfill('0') << _instance << "."
+                             << std::hex << std::setw(4) << std::setfill('0') << _eventgroup << ":"
+                             << std::hex << std::setw(4) << std::setfill('0') << _event << ":"
+                             << std::dec << (uint16_t)_major << "]";
             }
             routing_manager_base::subscribe(_client, _uid, _gid, _service, _instance, _eventgroup, _major, _event);
 #ifdef VSOMEIP_ENABLE_COMPAT
@@ -632,11 +648,20 @@ void routing_manager_impl::subscribe(client_t _client, uid_t _uid, gid_t _gid,
         if (discovery_) {
             std::set<event_t> its_already_subscribed_events;
 
+            VSOMEIP_INFO << "APEX: EVENT DISCOVERY ";
+
             // Note: The calls to insert_subscription & handle_subscription_state must not
             // run concurrently to a call to on_subscribe_ack. Therefore the lock is acquired
             // before calling insert_subscription and released after the call to
             // handle_subscription_state.
             std::unique_lock<std::mutex> its_critical(remote_subscription_state_mutex_);
+            VSOMEIP_INFO << "APEX: INSERTING SUBSCRIPTION"
+                         << std::hex << std::setw(4) << std::setfill('0') << _client <<"): ["
+                         << std::hex << std::setw(4) << std::setfill('0') << _service << "."
+                         << std::hex << std::setw(4) << std::setfill('0') << _instance << "."
+                         << std::hex << std::setw(4) << std::setfill('0') << _eventgroup << ":"
+                         << std::hex << std::setw(4) << std::setfill('0') << _event << ":"
+                         << std::dec << (uint16_t)_major << "]";
             bool inserted = insert_subscription(_service, _instance, _eventgroup,
                     _event, _client, &its_already_subscribed_events);
             if (inserted) {
@@ -644,11 +669,27 @@ void routing_manager_impl::subscribe(client_t _client, uid_t _uid, gid_t _gid,
                     handle_subscription_state(_client, _service, _instance, _eventgroup, _event);
                     its_critical.unlock();
                     static const ttl_t configured_ttl(configuration_->get_sd_ttl());
+                    VSOMEIP_INFO << "APEX: Local Client = 0 "
+                                 << std::hex << std::setw(4) << std::setfill('0') << _client <<"): ["
+                                 << std::hex << std::setw(4) << std::setfill('0') << _service << "."
+                                 << std::hex << std::setw(4) << std::setfill('0') << _instance << "."
+                                 << std::hex << std::setw(4) << std::setfill('0') << _eventgroup << ":"
+                                 << std::hex << std::setw(4) << std::setfill('0') << _event << ":"
+                                 << std::dec << (uint16_t)_major << "]";
                     notify_one_current_value(_client, _service, _instance,
                             _eventgroup, _event, its_already_subscribed_events);
 
                     auto its_info = find_eventgroup(_service, _instance, _eventgroup);
                     if (its_info) {
+
+                        VSOMEIP_INFO << "APEX: Local Client = 0, SUBSCRIBE TO REMOTE "
+                                      << std::hex << std::setw(4) << std::setfill('0') << _client <<"): ["
+                                      << std::hex << std::setw(4) << std::setfill('0') << _service << "."
+                                      << std::hex << std::setw(4) << std::setfill('0') << _instance << "."
+                                      << std::hex << std::setw(4) << std::setfill('0') << _eventgroup << ":"
+                                      << std::hex << std::setw(4) << std::setfill('0') << _event << ":"
+                                      << std::dec << (uint16_t)_major << "]";
+
                         discovery_->subscribe(_service, _instance, _eventgroup,
                                 _major, configured_ttl,
                                 its_info->is_selective() ? _client : VSOMEIP_ROUTING_CLIENT,
@@ -657,6 +698,17 @@ void routing_manager_impl::subscribe(client_t _client, uid_t _uid, gid_t _gid,
                 } else {
                     its_critical.unlock();
                     if (is_available(_service, _instance, _major)) {
+
+                        VSOMEIP_INFO << "APEX: sending SUBSCRIBE to Local client value " <<
+                                      std::hex << std::setw(4) << std::setfill('0') << its_local_client
+                                     << std::hex << std::setw(4) << std::setfill('0') << _client <<"): ["
+                                     << std::hex << std::setw(4) << std::setfill('0') << _service << "."
+                                     << std::hex << std::setw(4) << std::setfill('0') << _instance << "."
+                                     << std::hex << std::setw(4) << std::setfill('0') << _eventgroup << ":"
+                                     << std::hex << std::setw(4) << std::setfill('0') << _event << ":"
+                                     << std::dec << (uint16_t)_major << "]";
+
+
                         stub_->send_subscribe(ep_mgr_->find_local(_service, _instance),
                                _client, _service, _instance, _eventgroup, _major, _event,
                                PENDING_SUBSCRIPTION_ID);
