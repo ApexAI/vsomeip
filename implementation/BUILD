@@ -57,7 +57,7 @@ cc_library(
             "configuration/src/*.cpp",
         ],
     ),
-    visibility = ["//visibility:public"],
+    visibility = ["//:__pkg__"],
     deps = [
         ":helper",
         ":includes",
@@ -74,7 +74,7 @@ cc_library(
             "service_discovery/src/*.cpp",
         ],
     ),
-    visibility = ["//visibility:public"],
+    visibility = ["//:__pkg__"],
     deps = [
         ":helper",
         ":includes",
@@ -90,7 +90,7 @@ cc_library(
             "e2e_protection/src/*.cpp",
         ],
     ),
-    visibility = ["//visibility:public"],
+    visibility = ["//:__pkg__"],
     deps = [
         ":helper",
         ":includes",
@@ -121,7 +121,7 @@ cc_library(
         "-lpthread",
         "-ldl",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//:__pkg__"],
     deps = [
         ":helper",
         ":includes",

@@ -10,16 +10,14 @@ cc_test(
     name = "configuration-test",
     srcs = [
         "configuration-test.cpp",
-        "//:libvsomeip3.so",
         "//:libvsomeip3-cfg.so.3",
     ],
     data = [
         ":configuration-test-files",
-        "//:vsomeip3-plugins",
     ],
     defines = ["VSOMEIP_CLEAN_INCLUDES"],
     deps = [
-        "//interface",
+        "//:vsomeip3",
         "//implementation:includes",
         "@googletest//:gtest",
     ],

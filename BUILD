@@ -2,7 +2,6 @@ cc_binary(
     name = "libvsomeip3.so",
     linkshared = True,
     linkstatic = True,
-    visibility = ["//visibility:public"],
     deps = [
         "//implementation",
     ],
@@ -10,25 +9,18 @@ cc_binary(
 
 cc_binary(
     name = "libvsomeip3-cfg.so.3",
-    linkopts = [
-        "-Wl,-rpath=\\$$ORIGIN",
-    ],
     linkshared = True,
     linkstatic = True,
-    visibility = ["//visibility:public"],
     deps = [
         "//implementation:configuration",
     ],
+    visibility = ["//test:__subpackages__"],
 )
 
 cc_binary(
     name = "libvsomeip3-e2e.so.3",
-    linkopts = [
-        "-Wl,-rpath=\\$$ORIGIN",
-    ],
     linkshared = True,
     linkstatic = True,
-    visibility = ["//visibility:public"],
     deps = [
         "//implementation:e2e_protection",
     ],
@@ -36,12 +28,8 @@ cc_binary(
 
 cc_binary(
     name = "libvsomeip3-sd.so.3",
-    linkopts = [
-        "-Wl,-rpath=\\$$ORIGIN",
-    ],
     linkshared = True,
     linkstatic = True,
-    visibility = ["//visibility:public"],
     deps = [
         "//implementation:service_discovery",
     ],
@@ -54,5 +42,13 @@ filegroup(
         "libvsomeip3-e2e.so.3",
         "libvsomeip3-sd.so.3",
     ],
+)
+
+cc_library(
+    name = "vsomeip3",
+    srcs = [":libvsomeip3.so"],
+    deps = ["//interface"],
+    data = [":vsomeip3-plugins"],
     visibility = ["//visibility:public"],
+    linkstatic = True, # no object files
 )
