@@ -6,5 +6,5 @@ cc_library(
         ],
     ),
     include_prefix = ".",
-    visibility = ["//visibility:public"],
+    visibility = ["//implementation:__pkg__", "//:__pkg__"],
 )

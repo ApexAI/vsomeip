@@ -14,14 +14,10 @@ cc_binary(
     name = "hello_world_service",
     srcs = [
         "hello_world_service_main.cpp",
-        "//:libvsomeip3.so"
     ],
     deps = [
         ":vsomeip_hello_world_service",
-        "//interface",
-    ],
-    data = [
-        "//:vsomeip3-plugins"
+        "//:vsomeip3"
     ],
     linkopts = [
         "-Wl,-rpath=\\$$ORIGIN/../..,--disable-new-dtags",
@@ -32,14 +28,10 @@ cc_binary(
     name = "hello_world_client",
     srcs = [
         "hello_world_client_main.cpp",
-        "//:libvsomeip3.so"
     ],
     deps = [
         ":vsomeip_hello_world_client",
-        "//interface",
-    ],
-    data = [
-        "//:vsomeip3-plugins"
+        "//:vsomeip3"
     ],
     linkopts = [
         "-Wl,-rpath=\\$$ORIGIN/../..,--disable-new-dtags",
