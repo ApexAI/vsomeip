@@ -117,10 +117,13 @@ cc_library(
     defines = [
         "WITHOUT_SYSTEMD",
     ],
-    linkopts = [
-        "-lpthread",
-        "-ldl",
-    ],
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-lpthread",
+            "-ldl",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = ["//:__pkg__"],
     deps = [
         ":helper",

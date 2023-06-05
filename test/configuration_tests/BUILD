@@ -16,9 +16,14 @@ cc_test(
         ":configuration-test-files",
     ],
     defines = ["VSOMEIP_CLEAN_INCLUDES"],
+    target_compatible_with = [
+        # FIXME: Test does not build for QNX
+        "@platforms//os:linux",
+    ],
     deps = [
         "//:vsomeip3",
         "//implementation:includes",
+        "@boost//:asio",
         "@googletest//:gtest",
     ],
 )

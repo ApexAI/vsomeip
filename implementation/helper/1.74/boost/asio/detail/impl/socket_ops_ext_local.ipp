@@ -27,6 +27,11 @@ signed_size_type recv(socket_type s, buf* bufs, size_t count,
 {
   uid = 0xFFFFFFFF;
   gid = 0xFFFFFFFF;
+#if defined(QNX)
+  signed_size_type result = ::recv(s, bufs, count, flags);
+  // FIXME: Improve error handling
+  return result;
+#else
   struct ucred *ucredp;
 
 #if defined(BOOST_ASIO_WINDOWS) || defined(__CYGWIN__)
@@ -85,6 +90,7 @@ signed_size_type recv(socket_type s, buf* bufs, size_t count,
       }
 	}
   }
+#endif
   return result;
 #endif // defined(BOOST_ASIO_WINDOWS) || defined(__CYGWIN__)
 }
@@ -96,6 +102,12 @@ signed_size_type recvfrom(socket_type s, buf* bufs, size_t count,
 {
   uid = 0xFFFFFFFF;
   gid = 0xFFFFFFFF;
+#if defined(QNX)
+  socklen_t _addrlen = static_cast<socklen_t>(*addrlen);
+  signed_size_type result = ::recvfrom(s, bufs, count, flags, addr, &_addrlen);
+  // FIXME: Improve error handling
+  return result;
+#else
   struct ucred *ucredp;
   clear_last_error();
 #if defined(BOOST_ASIO_WINDOWS) || defined(__CYGWIN__)
@@ -159,6 +171,7 @@ signed_size_type recvfrom(socket_type s, buf* bufs, size_t count,
       }
     }
   }
+#endif
   return result;
 #endif // defined(BOOST_ASIO_WINDOWS) || defined(__CYGWIN__)
 }
