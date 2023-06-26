@@ -2551,7 +2551,7 @@ void configuration_impl::trim(std::string &_s) {
         std::find_if(
             _s.begin(),
             _s.end(),
-            std::not1(std::ptr_fun(isspace))
+            [](unsigned char ch) { return !std::isspace(ch); }
         )
     );
 
@@ -2559,7 +2559,7 @@ void configuration_impl::trim(std::string &_s) {
         std::find_if(
             _s.rbegin(),
             _s.rend(),
-            std::not1(std::ptr_fun(isspace))).base(),
+            [](unsigned char ch) { return !std::isspace(ch); }).base(),
             _s.end()
     );
 }
