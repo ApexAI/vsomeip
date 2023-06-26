@@ -7,7 +7,6 @@ cmake_like_configure_file(
     config = {
         "DEFAULT_CONFIGURATION_FILE": "/etc/vsomeip.json",
         "DEFAULT_CONFIGURATION_FOLDER": "/etc/vsomeip",
-        "VSOMEIP_BASE_PATH": "/tmp",
         "VSOMEIP_UNICAST_ADDRESS": "127.0.0.1",
         "VSOMEIP_DIAGNOSIS_ADDRESS": "0x01",
         "VSOMEIP_ROUTING_READY_MESSAGE": "SOME/IP routing ready.",
@@ -15,7 +14,10 @@ cmake_like_configure_file(
         "VSOMEIP_MAJOR_VERSION": "3",
         "VSOMEIP_MINOR_VERSION": "1",
         "VSOMEIP_PATCH_VERSION": "20",
-    },
+    } | select({
+        "//conditions:default": {"VSOMEIP_BASE_PATH": "/tmp"},
+        "@platforms//os:qnx": {"VSOMEIP_BASE_PATH": "/var"},
+    }),
 )
 
 cc_library(
