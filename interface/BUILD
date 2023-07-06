@@ -6,5 +6,9 @@ cc_library(
         ],
     ),
     include_prefix = ".",
-    visibility = ["//implementation:__pkg__", "//:__pkg__"],
+    tags = ["same-ros-pkg-as: @vsomeip//:vsomeip3"],
+    visibility = [
+        "//:__pkg__",
+        "//implementation:__pkg__",
+    ],
 )

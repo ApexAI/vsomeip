@@ -29,6 +29,7 @@ cc_library(
         ],
     ),
     strip_include_prefix = "helper/1.74",
+    tags = ["same-ros-pkg-as: @vsomeip//:vsomeip3"],
     deps = [
         "@boost//:headers",
     ],
@@ -46,6 +47,7 @@ cc_library(
             "*/include",
         ],
     ) + ["message"],
+    tags = ["same-ros-pkg-as: @vsomeip//:vsomeip3"],
     visibility = [
         ":__subpackages__",
         "//test:__subpackages__",
@@ -126,6 +128,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+    tags = ["same-ros-pkg-as: @vsomeip//:vsomeip3"],
     visibility = ["//:__pkg__"],
     deps = [
         ":helper",

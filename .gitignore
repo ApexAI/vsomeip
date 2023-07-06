@@ -111,4 +111,4 @@ test/security_tests/security_test_local_config.json
 
 /.clwb/
 /.bazelrc
-/bazel-*/
+/bazel-*
