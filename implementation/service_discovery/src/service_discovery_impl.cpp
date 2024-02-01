@@ -1392,6 +1392,7 @@ service_discovery_impl::process_serviceentry(
                                                  its_major, its_minor, _unicast_flag);
                 break;
             case entry_type_e::OFFER_SERVICE:
+                VSOMEIP_TRACE << "Processing SD OFFER entry for service " << _entry->get_service();
                 process_offerservice_serviceentry(its_service, its_instance,
                         its_major, its_minor, its_ttl,
                         its_reliable_address, its_reliable_port,
@@ -1489,6 +1490,7 @@ service_discovery_impl::process_offerservice_serviceentry(
                                 _unreliable_address, _unreliable_port, false)) {
                     expire_subscriptions_and_services(_unreliable_address,
                             _unreliable_port, false);
+                    VSOMEIP_TRACE << "Ignoring offer because of missing SD Acceptance";
                     return;
                 }
                 break;
@@ -1594,6 +1596,7 @@ service_discovery_impl::process_offerservice_serviceentry(
         }
     }
 
+    VSOMEIP_TRACE << "Adding new routing info for " << _service << ": " << _unreliable_address.to_string() << ":" << _unreliable_port;
     host_->add_routing_info(_service, _instance,
                             _major, _minor,
                             _ttl * get_ttl_factor(_service, _instance, ttl_factor_offers_),
