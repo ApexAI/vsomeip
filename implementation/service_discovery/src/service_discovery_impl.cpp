@@ -1553,9 +1553,10 @@ service_discovery_impl::process_offerservice_serviceentry(
         }
     }
 
-    // No need to resubscribe for unicast offers
-    if (_received_via_mcast) {
-        auto found_service = subscribed_.find(_service);
+    VSOMEIP_TRACE << "Resubscribing for unicast offer [" << std::hex << std::setfill('0')
+                                                        << std::setw(4) << _service << "."
+                                                        << std::setw(4) << _instance;
+    auto found_service = subscribed_.find(_service);
         if (found_service != subscribed_.end()) {
             auto found_instance = found_service->second.find(_instance);
             if (found_instance != found_service->second.end()) {
@@ -1594,7 +1595,6 @@ service_discovery_impl::process_offerservice_serviceentry(
                 }
             }
         }
-    }
 
     VSOMEIP_TRACE << "Adding new routing info for " << _service << ": " << _unreliable_address.to_string() << ":" << _unreliable_port;
     host_->add_routing_info(_service, _instance,
