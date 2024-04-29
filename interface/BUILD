@@ -6,7 +6,7 @@ cc_library(
             "**/*.h",
         ],
     ),
-    include_prefix = ".",
+    strip_include_prefix = ".",
     tags = ["same-ros-pkg-as: @vsomeip//:vsomeip3"],
     visibility = [
         "//:__pkg__",
