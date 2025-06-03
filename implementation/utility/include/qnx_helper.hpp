@@ -13,7 +13,23 @@
  #define IP_PKTINFO		25   /* int; send interface and src addr */
 
 // struct in_pktinfo is defined in qcc71 toolchain
-#include "netinet/in.h"
+
+#if __has_include("io-sock/netinet/in.h")
+  #include <io-sock/netinet/in.h>
+  #define USE_IO_SOCK
+#else
+  #include "netinet/in.h"
+#endif
+
+
+#ifdef USE_IO_SOCK
+// in_pktinfo must be defined for io-sock
+struct in_pktinfo {
+  struct in_addr  ipi_addr; /* src/dst address */
+  unsigned int ipi_ifindex; /* interface index */
+};
+#endif
+
 
  #endif // VSOMEIP_V3_QNX_HELPER_HPP_
 
