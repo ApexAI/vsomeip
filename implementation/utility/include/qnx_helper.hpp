@@ -7,7 +7,7 @@
 #ifndef VSOMEIP_V3_QNX_HELPER_HPP_
 #define VSOMEIP_V3_QNX_HELPER_HPP_
 #include <sys/socket.h>
-#ifdef USE_QNX_IO_SOCK
+#if defined(USE_QNX_IO_SOCK) && defined(QNX710)
 #include <io-sock/netinet/in.h>
 #else
 // struct in_pktinfo is defined in qcc71 toolchain
