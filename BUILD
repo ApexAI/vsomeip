@@ -6,9 +6,7 @@ cc_shared_library(
     #user_link_flags = [
     #    "-Wl,--no-undefined",
     #],
-    deps = [
-        "//implementation",
-    ],
+    deps = ["//implementation"],
 )
 
 cc_shared_library(
@@ -22,6 +20,7 @@ cc_shared_library(
     #user_link_flags = [
     #    "-Wl,--no-undefined",
     #],
+    visibility = ["//visibility:public"],
     deps = [
         "//implementation:configuration",
     ],
@@ -38,18 +37,30 @@ cc_shared_library(
     #user_link_flags = [
     #    "-Wl,--no-undefined",
     #],
+    visibility = ["//visibility:public"],
     deps = [
         "//implementation:service_discovery",
     ],
 )
 
+
 cc_import(
     name = "vsomeip3_import",
     shared_library = ":vsomeip3_shared",
     tags = ["same-ros-pkg-as: vsomeip3"],
-    deps = [
-        "//interface",
-    ],
+    deps = ["//interface"],
+)
+
+cc_import(
+    name = "vsomeip3_configuration_plugin_import",
+    shared_library = ":vsomeip3_config_plugin",
+    tags = ["same-ros-pkg-as: vsomeip3"],
+)
+
+cc_import(
+    name = "vsomeip3_sd_plugin_import",
+    shared_library = ":vsomeip3_sd_plugin",
+    tags = ["same-ros-pkg-as: vsomeip3"],
 )
 
 # interface library, use this target to depend on vsomeip
@@ -67,5 +78,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":vsomeip3_import",
+        ":vsomeip3_configuration_plugin_import",
+        ":vsomeip3_sd_plugin_import",
+        "//interface",
     ],
 )
