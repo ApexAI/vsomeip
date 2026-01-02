@@ -125,6 +125,8 @@ void udp_server_endpoint_impl::init_unlocked(const endpoint_type& _local, boost:
         unicast_socket_.reset();
     }
 
+    VSOMEIP_DEBUG << instance_name_ << __func__ << ": creating UDP unicast socket for " << _local.address().to_string() << ":" << std::dec
+                  << _local.port() << ", lifecycle_idx=" << lifecycle_idx_.load();
     unicast_socket_ = std::make_shared<socket_type>(io_, _local.protocol());
     if (!unicast_socket_) {
         _error = boost::asio::error::make_error_code(boost::asio::error::no_memory);
@@ -169,6 +171,8 @@ void udp_server_endpoint_impl::init_unlocked(const endpoint_type& _local, boost:
         unicast_socket_.reset();
         return;
     }
+    VSOMEIP_DEBUG << instance_name_ << __func__ << ": UDP unicast socket bound to " << _local.address().to_string() << ":" << std::dec
+                  << _local.port() << ", lifecycle_idx=" << lifecycle_idx_.load();
 
     if (_local.address().is_v4()) {
         is_v4_ = true;
@@ -926,6 +930,8 @@ void udp_server_endpoint_impl::set_multicast_option(const boost::asio::ip::addre
             // because we will recreate the socket.
             join_status_.clear();
 
+            VSOMEIP_DEBUG << instance_name_ << __func__ << ": creating UDP multicast socket, local_port=" << std::dec << local_.port()
+                          << ", lifecycle_idx=" << lifecycle_idx_.load();
             multicast_socket_ = std::make_unique<socket_type>(io_, local_.protocol());
             if (!multicast_socket_) {
                 VSOMEIP_ERROR << instance_name_ << __func__ << ": failed to create socket";

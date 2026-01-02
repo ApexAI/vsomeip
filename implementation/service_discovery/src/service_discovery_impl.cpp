@@ -45,6 +45,21 @@
 namespace vsomeip_v3 {
 namespace sd {
 
+static const char* to_string(entry_type_e _type) {
+    switch (_type) {
+    case entry_type_e::FIND_SERVICE:
+        return "Find";
+    case entry_type_e::OFFER_SERVICE:
+        return "Offer";
+    case entry_type_e::SUBSCRIBE_EVENTGROUP:
+        return "Subscribe";
+    case entry_type_e::SUBSCRIBE_EVENTGROUP_ACK:
+        return "SubscribeAck";
+    default:
+        return "Other";
+    }
+}
+
 service_discovery_impl::service_discovery_impl(service_discovery_host* _host, const std::shared_ptr<configuration>& _configuration) :
     io_(_host->get_io()), host_(_host), configuration_(_configuration), port_(VSOMEIP_SD_DEFAULT_PORT), reliable_(false),
     serializer_(std::make_shared<serializer>(configuration_->get_buffer_shrink_threshold())),
@@ -1099,6 +1114,26 @@ void service_discovery_impl::on_message(const byte_t* _data, length_t _length, c
         sd_acceptance_state_t accept_state(expired_ports);
 
         for (auto iter = its_entries.begin(); iter != its_end; iter++) {
+            const entry_type_e its_type = (*iter)->get_type();
+            if (its_type == entry_type_e::FIND_SERVICE || its_type == entry_type_e::OFFER_SERVICE || its_type == entry_type_e::SUBSCRIBE_EVENTGROUP
+                || its_type == entry_type_e::SUBSCRIBE_EVENTGROUP_ACK) {
+                if ((*iter)->is_service_entry()) {
+                    VSOMEIP_DEBUG << "service_discovery_impl::on_message: rx " << to_string(its_type) << " sender=" << _sender.to_string()
+                                  << " via=" << (_is_multicast ? "multicast" : "unicast") << " service=0x" << std::hex
+                                  << (*iter)->get_service() << " instance=0x" << (*iter)->get_instance() << " major=0x"
+                                  << static_cast<uint32_t>((*iter)->get_major_version()) << " ttl=" << std::dec << (*iter)->get_ttl();
+                } else {
+                    std::shared_ptr<eventgroupentry_impl> its_eventgroup_entry = std::dynamic_pointer_cast<eventgroupentry_impl>(*iter);
+                    if (its_eventgroup_entry) {
+                        VSOMEIP_DEBUG << "service_discovery_impl::on_message: rx " << to_string(its_type) << " sender=" << _sender.to_string()
+                                      << " via=" << (_is_multicast ? "multicast" : "unicast") << " service=0x" << std::hex
+                                      << its_eventgroup_entry->get_service() << " instance=0x" << its_eventgroup_entry->get_instance()
+                                      << " eventgroup=0x" << its_eventgroup_entry->get_eventgroup() << " counter=0x"
+                                      << static_cast<uint32_t>(its_eventgroup_entry->get_counter()) << " ttl=" << std::dec
+                                      << its_eventgroup_entry->get_ttl();
+                    }
+                }
+            }
             if (!sd_acceptance_queried) {
                 sd_acceptance_queried = true;
                 if (sd_acceptance_handler_) {

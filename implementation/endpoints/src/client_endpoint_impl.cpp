@@ -51,6 +51,8 @@ void client_endpoint_impl<Protocol>::recreate_socket() {
         socket_ = socket_factory->create_tcp_socket(io);
     } else if constexpr (std::is_same_v<Protocol, boost::asio::ip::udp>) {
         socket_ = socket_factory->create_udp_socket(io);
+        VSOMEIP_DEBUG << "client_endpoint_impl::recreate_socket: created UDP socket local=" << this->local_.address().to_string() << ":"
+                      << std::dec << this->local_.port() << " remote=" << remote_.address().to_string() << ":" << std::dec << remote_.port();
     }
 #if defined(__linux__) || defined(__QNX__)
     else if constexpr (std::is_same_v<Protocol, boost::asio::local::stream_protocol>) {
