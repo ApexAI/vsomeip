@@ -107,6 +107,18 @@ message::~message() try {
         return;
     }
 
+    const std::string_view ts = timestamp();
+    const std::string_view app = app_name();
+    const std::string_view lvl = level_as_view();
+    const std::string_view msg = buffer_as_view();
+    std::string callback_output;
+    callback_output.reserve(ts.size() + app.size() + lvl.size() + msg.size());
+    callback_output += ts;
+    callback_output += app;
+    callback_output += lvl;
+    callback_output += msg;
+    its_logger->log_to_additional_callback(level_, callback_output);
+
     if (console_enabled_) {
 #ifndef ANDROID
         // std::cout is threadsafe, but output may be interleaved if multiple things are
@@ -115,10 +127,6 @@ message::~message() try {
         // this.
         // Unfortunately, building the string is a bit awkward - freely concatenating
         // string_views and strings is a C++26 feature.
-        const std::string_view ts = timestamp();
-        const std::string_view app = app_name();
-        const std::string_view lvl = level_as_view();
-        const std::string_view msg = buffer_as_view();
         std::string output;
         output.reserve(ts.size() + app.size() + lvl.size() + msg.size() + 1);
         output += ts;
@@ -173,9 +181,6 @@ message::~message() try {
         // the information readily available.
         // Like above, we unfortunately have to use somewhat awkward code, as freely mixing of
         // strings and string_view only becomes available in C++26.
-        const std::string_view ts = timestamp();
-        const std::string_view lvl = level_as_view();
-        const std::string_view msg = buffer_as_view();
         std::string output;
         output.reserve(ts.size() + lvl.size() + msg.size() + 1);
         output += ts;

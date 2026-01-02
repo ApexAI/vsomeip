@@ -7,9 +7,11 @@
 #define VSOMEIP_V3_LOGGER_CONFIGURATION_HPP_
 
 #include <atomic>
+#include <functional>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <string_view>
 
 #ifdef USE_DLT
@@ -45,6 +47,9 @@ public:
     config get_configuration() const;
 
     void log_to_file(std::string_view _msg);
+    void set_additional_log_callback(std::function<void(level_e, std::string_view)> _callback);
+    void clear_additional_log_callback();
+    void log_to_additional_callback(level_e _level, std::string_view _msg);
 
 #ifdef USE_DLT
 #ifndef ANDROID
@@ -58,6 +63,9 @@ private:
 
     std::mutex log_file_mutex_;
     std::ofstream log_file_;
+
+    std::mutex additional_callback_mutex_;
+    std::function<void(level_e, std::string_view)> additional_callback_;
 };
 
 } // namespace logger

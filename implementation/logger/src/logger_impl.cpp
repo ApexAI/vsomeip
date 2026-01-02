@@ -46,6 +46,27 @@ void logger_impl::log_to_file(std::string_view _msg) {
     }
 }
 
+void logger_impl::set_additional_log_callback(std::function<void(level_e, std::string_view)> _callback) {
+    std::scoped_lock its_lock{additional_callback_mutex_};
+    additional_callback_ = std::move(_callback);
+}
+
+void logger_impl::clear_additional_log_callback() {
+    std::scoped_lock its_lock{additional_callback_mutex_};
+    additional_callback_ = {};
+}
+
+void logger_impl::log_to_additional_callback(level_e _level, std::string_view _msg) {
+    std::function<void(level_e, std::string_view)> callback;
+    {
+        std::scoped_lock its_lock{additional_callback_mutex_};
+        callback = additional_callback_;
+    }
+    if (callback) {
+        callback(_level, _msg);
+    }
+}
+
 #ifdef USE_DLT
 #ifndef ANDROID
 
@@ -131,6 +152,22 @@ logger_impl* logger_impl::get() {
     };
     static std::unique_ptr<logger_impl, decltype(deleter)> instance{new logger_impl, deleter};
     return is_destroyed ? nullptr : instance.get();
+}
+
+void set_additional_log_callback(additional_log_callback_t _callback) {
+    auto* its_logger = logger_impl::get();
+    if (!its_logger) {
+        return;
+    }
+    its_logger->set_additional_log_callback(std::move(_callback));
+}
+
+void clear_additional_log_callback() {
+    auto* its_logger = logger_impl::get();
+    if (!its_logger) {
+        return;
+    }
+    its_logger->clear_additional_log_callback();
 }
 
 } // namespace logger

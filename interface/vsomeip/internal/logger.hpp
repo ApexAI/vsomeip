@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <ostream>
 #include <streambuf>
 #include <string_view>
@@ -61,6 +62,13 @@ private:
     std::chrono::system_clock::time_point when_;
     mutable std::string timestamp_;
 };
+
+using additional_log_callback_t = std::function<void(level_e, std::string_view)>;
+
+// Register a user-provided callback that is invoked in addition to the configured log sinks.
+// The provided string_view is only valid for the duration of the callback invocation.
+VSOMEIP_IMPORT_EXPORT void set_additional_log_callback(additional_log_callback_t _callback);
+VSOMEIP_IMPORT_EXPORT void clear_additional_log_callback();
 
 } // namespace logger
 } // namespace vsomeip_v3
