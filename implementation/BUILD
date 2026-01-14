@@ -1,25 +1,27 @@
-load("@vsomeip//bazel:cmake_like_configure_file.bzl", "cmake_like_configure_file")
+load("@vsomeip//bazel:version.bzl", "version_dict_from_string")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
-cmake_like_configure_file(
+VSOMEIP_GEN_VERSION = "3.4.11-dev1"  # This version must match the git tag version.
+
+expand_template(
     name = "config",
-    src = "configuration/include/internal.hpp.in",
+    template = "configuration/include/internal.hpp.in",
     out = "configuration/include/internal.hpp",
-    config = {
-        "DEFAULT_CONFIGURATION_FILE": "/etc/vsomeip.json",
-        "DEFAULT_CONFIGURATION_FOLDER": "/etc/vsomeip",
-        "VSOMEIP_UNICAST_ADDRESS": "127.0.0.1",
-        "VSOMEIP_DIAGNOSIS_ADDRESS": "0x01",
-        "VSOMEIP_ROUTING_READY_MESSAGE": "SOME/IP routing ready.",
-        "VSOMEIP_HOTFIX_VERSION": "0",
-        "VSOMEIP_MAJOR_VERSION": "3",
-        "VSOMEIP_MINOR_VERSION": "5",
-        "VSOMEIP_PATCH_VERSION": "9",
-        "VSOMEIP_LOCAL_TCP_PORT_WAIT_TIME": "100",
-        "VSOMEIP_LOCAL_TCP_PORT_MAX_WAIT_TIME": "10000",
-    } | select({
-        "//conditions:default": {"VSOMEIP_BASE_PATH": "/tmp"},
-        "@platforms//os:qnx": {"VSOMEIP_BASE_PATH": "/var"},
-    }),
+    substitutions = 
+{
+        "@DEFAULT_CONFIGURATION_FILE@": "/etc/vsomeip.json",
+        "@DEFAULT_CONFIGURATION_FOLDER@": "/etc/vsomeip",
+        "@VSOMEIP_UNICAST_ADDRESS@": "127.0.0.1",
+        "@VSOMEIP_DIAGNOSIS_ADDRESS@": "0x01",
+        "@VSOMEIP_ROUTING_READY_MESSAGE@": "SOME/IP routing ready.",
+        "@VSOMEIP_LOCAL_TCP_PORT_WAIT_TIME@": "100",
+        "@VSOMEIP_LOCAL_TCP_PORT_MAX_WAIT_TIME@": "10000",
+    } 
+    | select({
+        "//conditions:default": {"@VSOMEIP_BASE_PATH@": "/tmp"},
+        "@platforms//os:qnx": {"@VSOMEIP_BASE_PATH@": "/var"},
+    })
+    | version_dict_from_string(VSOMEIP_GEN_VERSION),
 )
 
 cc_library(
