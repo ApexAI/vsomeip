@@ -1041,6 +1041,13 @@ bool routing_manager_impl::send_via_sd(const std::shared_ptr<endpoint_definition
 
     if (its_endpoint) {
         is_sent = its_endpoint->send_to(_target, _data, _size);
+        if (is_sent) {
+            VSOMEIP_INFO << "rmi::send_via_sd using existing SD endpoint "
+                         << (its_endpoint->is_reliable() ? "TCP" : "UDP")
+                         << " local_port=" << its_endpoint->get_local_port()
+                         << " remote=" << _target->get_address().to_string() << ":" << _target->get_port()
+                         << " sd_port=" << _sd_port;
+        }
         if (is_sent && tc_->is_sd_enabled()) {
             trace::header its_header;
             if (its_header.prepare(its_endpoint, true, 0x0))
@@ -1890,8 +1897,12 @@ std::shared_ptr<endpoint> routing_manager_impl::create_service_discovery_endpoin
         } catch (const std::exception& e) {
             VSOMEIP_ERROR << "Server endpoint creation failed: Service "
                              "Discovery endpoint could not be created: "
-                          << e.what();
+                         << e.what();
         }
+    } else {
+        VSOMEIP_INFO << "rmi::create_service_discovery_endpoint reuse existing "
+                     << (_reliable ? "TCP" : "UDP") << " SD endpoint bound to local_port="
+                     << its_service_endpoint->get_local_port() << " configured_port=" << _port;
     }
     return its_service_endpoint;
 }
