@@ -8,6 +8,8 @@
 #include <thread>
 
 #include <ifaddrs.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #include <boost/asio/ip/multicast.hpp>
 #include <boost/asio/ip/network_v4.hpp>
@@ -30,6 +32,27 @@
 namespace ip = boost::asio::ip;
 
 namespace {
+
+std::string get_native_sin6_port_info(int _fd) {
+    sockaddr_storage its_sockaddr {};
+    socklen_t its_len = sizeof(its_sockaddr);
+    if (::getsockname(_fd, reinterpret_cast<sockaddr*>(&its_sockaddr), &its_len) != 0) {
+        return {};
+    }
+
+    if (its_sockaddr.ss_family != AF_INET6) {
+        return {};
+    }
+
+    const auto* its_in6 = reinterpret_cast<const sockaddr_in6*>(&its_sockaddr);
+    const std::uint16_t its_sin6_port_raw = its_in6->sin6_port; // network byte order
+    const std::uint16_t its_sin6_port_host = ntohs(its_sin6_port_raw);
+
+    std::ostringstream oss;
+    oss << " sin6_port=0x" << std::hex << std::setw(4) << std::setfill('0') << its_sin6_port_raw
+        << " host_port=" << std::dec << its_sin6_port_host;
+    return oss.str();
+}
 
 unsigned int find_scope_id(const std::string& _local_address) {
     std::vector<unsigned int> indices(0);
@@ -109,7 +132,13 @@ void udp_server_endpoint_impl::init(const endpoint_type& _local, boost::system::
                  << ", lifecycle_idx=" << lifecycle_idx_.load();
     std::scoped_lock its_lock(sync_);
     init_unlocked(_local, _error);
-    VSOMEIP_INFO << instance_name_ << __func__ << ": lifecycle_idx=" << lifecycle_idx_.load() << ", " << _error.message();
+    std::string its_native_sin6_port;
+    if (unicast_socket_ && unicast_socket_->is_open()) {
+        its_native_sin6_port = get_native_sin6_port_info(unicast_socket_->native_handle());
+    }
+    VSOMEIP_INFO << instance_name_ << __func__ << ": lifecycle_idx=" << lifecycle_idx_.load()
+                 << ", local=" << get_address_port_local_unlocked() << its_native_sin6_port
+                 << ", " << _error.message();
 }
 
 void udp_server_endpoint_impl::init_unlocked(const endpoint_type& _local, boost::system::error_code& _error) {
@@ -475,8 +504,13 @@ bool udp_server_endpoint_impl::send_queued_unlocked(const target_data_iterator_t
         if (its_service == VSOMEIP_SD_SERVICE && unicast_socket_) {
             boost::system::error_code ec;
             endpoint_type its_local_ep = unicast_socket_->local_endpoint(ec);
+            std::string its_native_sin6_port;
+            if (!ec && its_local_ep.address().is_v6()) {
+                its_native_sin6_port = get_native_sin6_port_info(unicast_socket_->native_handle());
+            }
             VSOMEIP_INFO << instance_name_ << "send_queued_unlocked(SD): local="
                             << its_local_ep.address().to_string() << ":" << std::dec << its_local_ep.port()
+                            << its_native_sin6_port
                             << " remote=" << _it->first.address().to_string() << ":" << _it->first.port()
                             << " bytes=" << its_entry.first->size();
         }
@@ -484,15 +518,19 @@ bool udp_server_endpoint_impl::send_queued_unlocked(const target_data_iterator_t
 
     boost::system::error_code its_local_ec;
     std::uint16_t its_src_port = local_.port();
+    std::string its_native_sin6_port;
     if (unicast_socket_) {
         endpoint_type its_local_ep = unicast_socket_->local_endpoint(its_local_ec);
         if (!its_local_ec) {
             its_src_port = its_local_ep.port();
+            if (its_local_ep.address().is_v6()) {
+                its_native_sin6_port = get_native_sin6_port_info(unicast_socket_->native_handle());
+            }
         }
     }
     std::stringstream msg;
     msg << instance_name_ << "sq(src:" << std::dec << its_src_port << " " << _it->first.address().to_string() << ":" << _it->first.port()
-        << "): ";
+        << its_native_sin6_port << "): ";
     for (std::size_t i = 0; i < its_entry.first->size(); ++i)
         msg << std::hex << std::setfill('0') << std::setw(2)
             << static_cast<int>((*its_entry.first)[i]) << " ";
