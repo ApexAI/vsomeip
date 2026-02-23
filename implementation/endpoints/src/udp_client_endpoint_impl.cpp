@@ -198,15 +198,13 @@ void udp_client_endpoint_impl::restart(bool _force) {
 
 void udp_client_endpoint_impl::send_queued(std::pair<message_buffer_ptr_t, uint32_t>& _entry) {
 
-#if 0
     std::stringstream msg;
-    msg << "ucei<" << remote_.address() << ":"
+    msg << "ucei<src:" << std::dec << local_.port() << " " << remote_.address() << ":"
         << std::dec << remote_.port()  << ">::sq: ";
-    for (std::size_t i = 0; i < _buffer->size(); i++)
+    for (std::size_t i = 0; i < _entry.first->size(); i++)
         msg << std::hex << std::setfill('0') << std::setw(2)
             << static_cast<int>((*_entry.first)[i]) << " ";
     VSOMEIP_INFO << msg.str();
-#endif
     {
         std::lock_guard<std::mutex> its_last_sent_lock(last_sent_mutex_);
         std::lock_guard<std::mutex> its_socket_lock(socket_mutex_);

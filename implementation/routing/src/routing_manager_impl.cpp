@@ -967,6 +967,13 @@ bool routing_manager_impl::send(client_t _client, const byte_t* _data, length_t 
                             its_target = is_service_discovery ? (sd_info_ ? sd_info_->get_endpoint(false) : nullptr)
                                                               : its_info->get_endpoint(_reliable);
                             if (its_target) {
+                                if (is_service_discovery) {
+                                    VSOMEIP_INFO << "rmi::send(SD) endpoint_type="
+                                                 << (its_target->is_reliable() ? "TCP" : "UDP")
+                                                 << " local_port=" << its_target->get_local_port()
+                                                 << " service=0x" << std::hex << std::setfill('0') << std::setw(4) << its_service
+                                                 << " method=0x" << std::setw(4) << its_method;
+                                }
                                 is_sent = its_target->send(_data, _size);
 #ifdef USE_DLT
                                 if (is_sent) {

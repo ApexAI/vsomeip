@@ -470,15 +470,33 @@ bool udp_server_endpoint_impl::send_queued_unlocked(const target_data_iterator_t
 
     const auto its_entry = _it->second.queue_.front();
 
-#if 0
+    if (its_entry.first && its_entry.first->size() > VSOMEIP_METHOD_POS_MAX) {
+        const service_t its_service = bithelper::read_uint16_be(&(*(its_entry.first))[VSOMEIP_SERVICE_POS_MIN]);
+        if (its_service == VSOMEIP_SD_SERVICE && unicast_socket_) {
+            boost::system::error_code ec;
+            endpoint_type its_local_ep = unicast_socket_->local_endpoint(ec);
+            VSOMEIP_INFO << instance_name_ << "send_queued_unlocked(SD): local="
+                            << its_local_ep.address().to_string() << ":" << std::dec << its_local_ep.port()
+                            << " remote=" << _it->first.address().to_string() << ":" << _it->first.port()
+                            << " bytes=" << its_entry.first->size();
+        }
+    }
+
+    boost::system::error_code its_local_ec;
+    std::uint16_t its_src_port = local_.port();
+    if (unicast_socket_) {
+        endpoint_type its_local_ep = unicast_socket_->local_endpoint(its_local_ec);
+        if (!its_local_ec) {
+            its_src_port = its_local_ep.port();
+        }
+    }
     std::stringstream msg;
-    msg << instance_name_ << "sq(" << _it->first.address().to_string() << ":" << _it->first.port()
+    msg << instance_name_ << "sq(src:" << std::dec << its_src_port << " " << _it->first.address().to_string() << ":" << _it->first.port()
         << "): ";
     for (std::size_t i = 0; i < its_entry.first->size(); ++i)
         msg << std::hex << std::setfill('0') << std::setw(2)
             << static_cast<int>((*its_entry.first)[i]) << " ";
     VSOMEIP_INFO << msg.str();
-#endif
 
     // Check whether we need to wait (SOME/IP-TP separation time)
     if (its_entry.second > 0) {
