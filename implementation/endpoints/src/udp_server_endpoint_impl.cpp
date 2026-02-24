@@ -132,13 +132,22 @@ void udp_server_endpoint_impl::init(const endpoint_type& _local, boost::system::
                  << ", lifecycle_idx=" << lifecycle_idx_.load();
     std::scoped_lock its_lock(sync_);
     init_unlocked(_local, _error);
+    std::string its_address_port = "ERR!";
     std::string its_native_sin6_port;
     if (unicast_socket_ && unicast_socket_->is_open()) {
-        its_native_sin6_port = get_native_sin6_port_info(unicast_socket_->native_handle());
+        boost::system::error_code ec;
+        endpoint_type its_local_endpoint = unicast_socket_->local_endpoint(ec);
+        if (!ec) {
+            its_address_port = its_local_endpoint.address().to_string();
+            its_address_port += ":";
+            its_address_port += std::to_string(its_local_endpoint.port());
+            if (its_local_endpoint.address().is_v6()) {
+                its_native_sin6_port = get_native_sin6_port_info(unicast_socket_->native_handle());
+            }
+        }
     }
-    VSOMEIP_INFO << instance_name_ << __func__ << ": lifecycle_idx=" << lifecycle_idx_.load()
-                 << ", local=" << get_address_port_local_unlocked() << its_native_sin6_port
-                 << ", " << _error.message();
+    VSOMEIP_INFO << instance_name_ << __func__ << ": lifecycle_idx=" << lifecycle_idx_.load() << ", local=" << its_address_port
+                 << its_native_sin6_port << ", " << _error.message();
 }
 
 void udp_server_endpoint_impl::init_unlocked(const endpoint_type& _local, boost::system::error_code& _error) {
