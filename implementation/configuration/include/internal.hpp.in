@@ -41,7 +41,7 @@
 #define VSOMEIP_DEBUG_CONFIGURATION_FOLDER      "/var/opt/public/sin/vsomeip/"
 #define VSOMEIP_LOCAL_CONFIGURATION_FOLDER      "./vsomeip"
 
-#define VSOMEIP_BASE_PATH                       "@VSOMEIP_BASE_PATH@/"
+#define VSOMEIP_BASE_PATH                       "/tmp/"
 
 #define VSOMEIP_ROUTING_HOST_PORT_DEFAULT       31490
 
