@@ -1,7 +1,7 @@
 load("@vsomeip//bazel:version.bzl", "version_dict_from_string")
 load("//bazel:expand_template.bzl", "expand_template")
 
-APEX_VSOMEIP_VERSION_TAG = "3.6.1-apex3"  # Must match the git tag version.
+APEX_VSOMEIP_VERSION_TAG = "3.6.1-apex4-data-asw-path"  # Must match the git tag version.
 
 expand_template(
     name = "config",
@@ -18,7 +18,7 @@ expand_template(
         } |
         select({
             "//conditions:default": {"@VSOMEIP_BASE_PATH@": "/tmp"},
-            "@platforms//os:qnx": {"@VSOMEIP_BASE_PATH@": "/var"},
+            "@platforms//os:qnx": {"@VSOMEIP_BASE_PATH@": "/data/asw"},
         }) |
         version_dict_from_string(APEX_VSOMEIP_VERSION_TAG),
     template = "configuration/include/internal.hpp.in",
