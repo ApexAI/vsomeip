@@ -15,8 +15,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <mutex>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -26,6 +28,8 @@ namespace vsomeip_v3 {
 namespace {
 
 constexpr const char* k_capture_path_env = "APEX_VSOMEIP_WRITE_PCAP";
+constexpr const char* k_capture_rotate_count_env = "APEX_VSOMEIP_WRITE_PCAP_ROTATE_COUNT";
+constexpr const char* k_capture_rotate_size_env = "APEX_VSOMEIP_WRITE_PCAP_ROTATE_SIZE_BYTES";
 
 constexpr std::uint32_t k_pcap_magic = 0xa1b2c3d4U;
 constexpr std::uint16_t k_pcap_major_version = 2U;
@@ -33,6 +37,8 @@ constexpr std::uint16_t k_pcap_minor_version = 4U;
 constexpr std::uint32_t k_pcap_reserved = 0U;
 constexpr std::uint32_t k_pcap_snaplen = 65535U;
 constexpr std::uint32_t k_pcap_linktype_raw = 101U;
+constexpr std::uint64_t k_pcap_global_header_size = 24U;
+constexpr std::uint64_t k_pcap_record_header_size = 16U;
 
 constexpr std::uint8_t k_ipv4_version_ihl = 0x45U;
 constexpr std::uint8_t k_ipv4_ttl = 64U;
@@ -85,6 +91,12 @@ struct tcp_flow_state_t {
 struct capture_state_t {
     bool enabled{false};
     std::FILE* file{nullptr};
+    std::string base_path_stem;
+    bool rotation_enabled{false};
+    std::size_t rotate_count{0U};
+    std::uint64_t rotate_size_bytes{0U};
+    std::size_t current_sequence{1U};
+    std::uint64_t current_file_bytes{0U};
     std::mutex mutex;
     std::uint16_t ipv4_identification{0U};
     bool warning_logged{false};
@@ -134,22 +146,112 @@ bool write_global_header(std::FILE* _file) {
     return write_all(_file, its_header.data(), its_header.size());
 }
 
+bool parse_positive_uint64(const char* _text, std::uint64_t& _value) {
+    if (_text == nullptr || _text[0] == '\0') {
+        return false;
+    }
+    for (const char* its_current = _text; *its_current != '\0'; ++its_current) {
+        if (*its_current < '0' || *its_current > '9') {
+            return false;
+        }
+    }
+
+    errno = 0;
+    char* its_end = nullptr;
+    const unsigned long long its_value = std::strtoull(_text, &its_end, 10);
+    if (errno != 0 || its_end == _text || its_end == nullptr || *its_end != '\0' || its_value == 0ULL) {
+        return false;
+    }
+
+    _value = static_cast<std::uint64_t>(its_value);
+    return true;
+}
+
+bool parse_rotate_count(const char* _text, std::size_t& _value) {
+    std::uint64_t its_value = 0U;
+    if (!parse_positive_uint64(_text, its_value) || its_value < 2U
+            || its_value > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+        return false;
+    }
+
+    _value = static_cast<std::size_t>(its_value);
+    return true;
+}
+
+bool parse_rotate_size(const char* _text, std::uint64_t& _value) {
+    return parse_positive_uint64(_text, _value);
+}
+
+std::string strip_trailing_pcap_suffix(const std::string& _path) {
+    constexpr const char* its_suffix = ".pcap";
+    constexpr std::size_t its_suffix_size = 5U;
+    if (_path.size() >= its_suffix_size
+            && _path.compare(_path.size() - its_suffix_size, its_suffix_size, its_suffix) == 0) {
+        return _path.substr(0U, _path.size() - its_suffix_size);
+    }
+    return _path;
+}
+
+std::string make_rotated_path(const capture_state_t& _state) {
+    return _state.base_path_stem + "." + std::to_string(_state.current_sequence) + ".pcap";
+}
+
+void close_capture_file(capture_state_t& _state) {
+    if (_state.file != nullptr) {
+        std::fclose(_state.file);
+        _state.file = nullptr;
+    }
+}
+
+void disable_capture(capture_state_t& _state) {
+    _state.enabled = false;
+    close_capture_file(_state);
+}
+
+bool open_capture_file(capture_state_t& _state, const std::string& _path) {
+    _state.file = std::fopen(_path.c_str(), "wb");
+    if (_state.file == nullptr) {
+        VSOMEIP_WARNING << "capture::capture: failed to open pcap file " << _path << ": " << std::strerror(errno);
+        return false;
+    }
+
+    if (!write_global_header(_state.file)) {
+        VSOMEIP_WARNING << "capture::capture: failed to write pcap global header to " << _path;
+        close_capture_file(_state);
+        return false;
+    }
+
+    _state.current_file_bytes = k_pcap_global_header_size;
+    return true;
+}
+
 void initialize_capture_state(capture_state_t& _state) {
     const char* its_path = std::getenv(k_capture_path_env);
     if (its_path == nullptr || its_path[0] == '\0') {
         return;
     }
 
-    _state.file = std::fopen(its_path, "wb");
-    if (_state.file == nullptr) {
-        VSOMEIP_WARNING << "capture::capture: failed to open pcap file " << its_path << ": " << std::strerror(errno);
-        return;
+    const char* its_rotate_count = std::getenv(k_capture_rotate_count_env);
+    const char* its_rotate_size = std::getenv(k_capture_rotate_size_env);
+    const bool its_has_rotate_count = its_rotate_count != nullptr;
+    const bool its_has_rotate_size = its_rotate_size != nullptr;
+
+    if (its_has_rotate_count || its_has_rotate_size) {
+        std::size_t its_parsed_count = 0U;
+        std::uint64_t its_parsed_size = 0U;
+        if (its_has_rotate_count && its_has_rotate_size && parse_rotate_count(its_rotate_count, its_parsed_count)
+                && parse_rotate_size(its_rotate_size, its_parsed_size)) {
+            _state.rotation_enabled = true;
+            _state.rotate_count = its_parsed_count;
+            _state.rotate_size_bytes = its_parsed_size;
+            _state.base_path_stem = strip_trailing_pcap_suffix(its_path);
+        } else {
+            VSOMEIP_WARNING << "capture::capture: invalid pcap rotation configuration; falling back to single-file capture";
+        }
     }
 
-    if (!write_global_header(_state.file)) {
-        VSOMEIP_WARNING << "capture::capture: failed to write pcap global header to " << its_path;
-        std::fclose(_state.file);
-        _state.file = nullptr;
+    const std::string its_output_path = _state.rotation_enabled ? make_rotated_path(_state) : std::string(its_path);
+    if (!open_capture_file(_state, its_output_path)) {
         return;
     }
 
@@ -171,6 +273,25 @@ void log_capture_warning_once(capture_state_t& _state, const char* _message) {
         _state.warning_logged = true;
         VSOMEIP_WARNING << _message;
     }
+}
+
+bool rotate_capture_file(capture_state_t& _state) {
+    if (_state.file != nullptr) {
+        if (std::fclose(_state.file) != 0) {
+            _state.file = nullptr;
+            log_capture_warning_once(_state, "capture::capture: failed to close pcap file during rotation");
+            return false;
+        }
+        _state.file = nullptr;
+    }
+
+    _state.current_sequence = _state.current_sequence == _state.rotate_count ? 1U : _state.current_sequence + 1U;
+    const std::string its_path = make_rotated_path(_state);
+    if (!open_capture_file(_state, its_path)) {
+        _state.warning_logged = true;
+        return false;
+    }
+    return true;
 }
 
 bool to_ip_endpoint(const boost::asio::ip::address& _address, port_t _port, ip_endpoint_t& _endpoint) {
@@ -340,7 +461,16 @@ tcp_flow_lookup_t make_tcp_flow_lookup(const packet_endpoints_t& _endpoints) {
     return its_lookup;
 }
 
-bool write_packet_record(std::FILE* _file, const std::vector<byte_t>& _packet) {
+bool write_packet_record(capture_state_t& _state, const std::vector<byte_t>& _packet) {
+    const std::uint64_t its_record_size = k_pcap_record_header_size + static_cast<std::uint64_t>(_packet.size());
+    if (_state.rotation_enabled && _state.current_file_bytes > k_pcap_global_header_size) {
+        const bool its_size_limit_exceeded = _state.current_file_bytes > _state.rotate_size_bytes
+                || its_record_size > _state.rotate_size_bytes - _state.current_file_bytes;
+        if (its_size_limit_exceeded && !rotate_capture_file(_state)) {
+            return false;
+        }
+    }
+
     const auto its_now = std::chrono::system_clock::now().time_since_epoch();
     const auto its_seconds = std::chrono::duration_cast<std::chrono::seconds>(its_now);
     const auto its_microseconds = std::chrono::duration_cast<std::chrono::microseconds>(its_now - its_seconds);
@@ -352,8 +482,13 @@ bool write_packet_record(std::FILE* _file, const std::vector<byte_t>& _packet) {
     append_le<std::uint32_t>(its_record_header, static_cast<std::uint32_t>(_packet.size()));
     append_le<std::uint32_t>(its_record_header, static_cast<std::uint32_t>(_packet.size()));
 
-    return write_all(_file, its_record_header.data(), its_record_header.size())
-            && write_all(_file, _packet.data(), _packet.size());
+    if (!write_all(_state.file, its_record_header.data(), its_record_header.size())
+            || !write_all(_state.file, _packet.data(), _packet.size())) {
+        return false;
+    }
+
+    _state.current_file_bytes += its_record_size;
+    return true;
 }
 
 bool build_tcp_packets(capture_state_t& _state, const packet_endpoints_t& _endpoints, const byte_t* _bytes, std::size_t _len,
@@ -431,13 +566,13 @@ void capture(const byte_t* _bytes, std::size_t _len, const capture_metadata_t& _
         std::vector<byte_t> its_packet;
         const std::uint16_t its_identification = its_state.ipv4_identification++;
         its_success = build_udp_packet(its_endpoints, _bytes, _len, its_identification, its_packet)
-                && write_packet_record(its_state.file, its_packet);
+                && write_packet_record(its_state, its_packet);
     } else {
         std::vector<std::vector<byte_t>> its_packets;
         its_success = build_tcp_packets(its_state, its_endpoints, _bytes, _len, its_packets);
         if (its_success) {
             for (const auto& its_packet : its_packets) {
-                if (!write_packet_record(its_state.file, its_packet)) {
+                if (!write_packet_record(its_state, its_packet)) {
                     its_success = false;
                     break;
                 }
@@ -447,11 +582,7 @@ void capture(const byte_t* _bytes, std::size_t _len, const capture_metadata_t& _
 
     if (!its_success) {
         log_capture_warning_once(its_state, "capture::capture: failed to serialize packet to pcap output");
-        its_state.enabled = false;
-        if (its_state.file != nullptr) {
-            std::fclose(its_state.file);
-            its_state.file = nullptr;
-        }
+        disable_capture(its_state);
     }
 }
 
