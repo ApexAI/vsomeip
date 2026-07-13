@@ -2405,7 +2405,12 @@ bool routing_manager_client::create_placeholder_event_and_subscribe(service_t _s
 
     std::shared_ptr<event> its_event = find_event(_service, _instance, _notifier);
     if (its_event) {
-        is_inserted = its_event->add_subscriber(_eventgroup, _filter, _client, false);
+        // The provider may have registered the event object but not offered it
+        // yet. In that state add_subscriber(..., false) rejects this otherwise
+        // valid local subscription and the later offer has nothing to transfer.
+        // Force the placeholder subscription into the event so the provider's
+        // registration/offer lifecycle retains it until notifications begin.
+        is_inserted = its_event->add_subscriber(_eventgroup, _filter, _client, true);
     }
 
     return is_inserted;
