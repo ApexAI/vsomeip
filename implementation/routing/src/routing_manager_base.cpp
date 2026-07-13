@@ -368,9 +368,10 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
                 its_event->set_version(its_service->get_major());
             }
             if (_eventgroups.size() == 0) { // No eventgroup specified
-                std::set<eventgroup_t> its_eventgroups;
-                its_eventgroups.insert(_notifier);
-                its_event->set_eventgroups(its_eventgroups);
+                // A cache placeholder can already contain subscribers for the
+                // implicit eventgroup. Do not reset that client set while
+                // completing the event registration.
+                its_event->add_eventgroup(_notifier);
             } else {
                 for (auto eg : _eventgroups) {
                     its_event->add_eventgroup(eg);
