@@ -15,7 +15,7 @@
 namespace {
 constexpr vsomeip_v3::service_t service = 0x1234;
 constexpr vsomeip_v3::instance_t instance = 0x5678;
-constexpr vsomeip_v3::event_t event = 0x8001;
+constexpr vsomeip_v3::event_t event_id = 0x8001;
 constexpr vsomeip_v3::client_t subscriber = 0x1001;
 
 class late_subscription_routing_manager : public vsomeip_v3::routing_manager_impl {
@@ -51,27 +51,27 @@ private:
 }
 
 TEST_F(routing_manager_ut_setup, preserves_specific_event_placeholder_subscriber_for_implicit_eventgroup) {
-    const std::set<vsomeip_v3::eventgroup_t> eventgroups{event};
+    const std::set<vsomeip_v3::eventgroup_t> eventgroups{event_id};
 
-    its_manager->register_event(subscriber, service, instance, event, eventgroups, vsomeip_v3::event_type_e::ET_UNKNOWN,
+    its_manager->register_event(subscriber, service, instance, event_id, eventgroups, vsomeip_v3::event_type_e::ET_UNKNOWN,
                                 vsomeip_v3::reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr, false,
                                 false, true);
 
-    const auto placeholder = its_manager->find_event(service, instance, event);
+    const auto placeholder = its_manager->find_event(service, instance, event_id);
     ASSERT_NE(nullptr, placeholder);
-    ASSERT_TRUE(placeholder->add_subscriber(event, nullptr, subscriber, false));
+    ASSERT_TRUE(placeholder->add_subscriber(event_id, nullptr, subscriber, false));
 
-    its_manager->register_event(subscriber, service, instance, event, {}, vsomeip_v3::event_type_e::ET_EVENT,
+    its_manager->register_event(subscriber, service, instance, event_id, {}, vsomeip_v3::event_type_e::ET_EVENT,
                                 vsomeip_v3::reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr, true,
                                 false, false);
 
-    const auto registered_event = its_manager->find_event(service, instance, event);
+    const auto registered_event = its_manager->find_event(service, instance, event_id);
     ASSERT_NE(nullptr, registered_event);
-    EXPECT_TRUE(registered_event->has_subscriber(event, subscriber));
+    EXPECT_TRUE(registered_event->has_subscriber(event_id, subscriber));
 }
 
 TEST_F(routing_manager_ut_setup, transfers_any_event_placeholder_subscriber_for_implicit_eventgroup) {
-    const std::set<vsomeip_v3::eventgroup_t> eventgroups{event};
+    const std::set<vsomeip_v3::eventgroup_t> eventgroups{event_id};
 
     its_manager->register_event(subscriber, service, instance, vsomeip_v3::ANY_EVENT, eventgroups, vsomeip_v3::event_type_e::ET_UNKNOWN,
                                 vsomeip_v3::reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr, false,
@@ -79,15 +79,15 @@ TEST_F(routing_manager_ut_setup, transfers_any_event_placeholder_subscriber_for_
 
     const auto placeholder = its_manager->find_event(service, instance, vsomeip_v3::ANY_EVENT);
     ASSERT_NE(nullptr, placeholder);
-    ASSERT_TRUE(placeholder->add_subscriber(event, nullptr, subscriber, false));
+    ASSERT_TRUE(placeholder->add_subscriber(event_id, nullptr, subscriber, false));
 
-    its_manager->register_event(subscriber, service, instance, event, {}, vsomeip_v3::event_type_e::ET_EVENT,
+    its_manager->register_event(subscriber, service, instance, event_id, {}, vsomeip_v3::event_type_e::ET_EVENT,
                                 vsomeip_v3::reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr, true,
                                 false, false);
 
-    const auto registered_event = its_manager->find_event(service, instance, event);
+    const auto registered_event = its_manager->find_event(service, instance, event_id);
     ASSERT_NE(nullptr, registered_event);
-    EXPECT_TRUE(registered_event->has_subscriber(event, subscriber));
+    EXPECT_TRUE(registered_event->has_subscriber(event_id, subscriber));
 }
 
 TEST(late_any_event_subscription, rescans_eventgroup_after_registration_overtakes_placeholder_creation) {
@@ -123,7 +123,7 @@ TEST(late_any_event_subscription, rescans_eventgroup_after_registration_overtake
             condition.wait(lock, [&] { return subscription_chose_placeholder; });
         }
 
-        manager.register_event(0x2001, service, instance, event, {event}, vsomeip_v3::event_type_e::ET_EVENT,
+        manager.register_event(0x2001, service, instance, event_id, {event_id}, vsomeip_v3::event_type_e::ET_EVENT,
                                vsomeip_v3::reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr, true,
                                false, false);
 
@@ -134,10 +134,18 @@ TEST(late_any_event_subscription, rescans_eventgroup_after_registration_overtake
         condition.notify_all();
     });
 
-    EXPECT_TRUE(manager.insert_subscription_for_test(event));
+    EXPECT_TRUE(manager.insert_subscription_for_test(event_id));
     registration.join();
 
-    const auto registered_event = manager.find_event(service, instance, event);
+    const auto registered_event = manager.find_event(service, instance, event_id);
     ASSERT_NE(nullptr, registered_event);
-    EXPECT_TRUE(registered_event->has_subscriber(event, subscriber));
+    EXPECT_TRUE(registered_event->has_subscriber(event_id, subscriber));
+
+    const auto placeholder = manager.find_event(service, instance, vsomeip_v3::ANY_EVENT);
+    ASSERT_NE(nullptr, placeholder);
+    EXPECT_TRUE(placeholder->has_subscriber(event_id, subscriber));
+
+    manager.unsubscribe(subscriber, nullptr, service, instance, event_id, vsomeip_v3::ANY_EVENT);
+    EXPECT_FALSE(registered_event->has_subscriber(event_id, subscriber));
+    EXPECT_FALSE(placeholder->has_subscriber(event_id, subscriber));
 }

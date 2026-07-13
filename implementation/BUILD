@@ -74,10 +74,14 @@ apex_cc_library(
             "service_discovery/src/*.cpp",
         ],
     ),
-    visibility = ["//:__pkg__"],
+    visibility = [
+        "//:__pkg__",
+        "//test/unit_tests/routing_manager_tests:__pkg__",
+    ],
     deps = [
         ":implementation",
     ],
+    alwayslink = True,
 )
 
 apex_cc_library(
