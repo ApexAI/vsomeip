@@ -34,3 +34,23 @@ TEST_F(routing_manager_ut_setup, preserves_specific_event_placeholder_subscriber
     ASSERT_NE(nullptr, registered_event);
     EXPECT_TRUE(registered_event->has_subscriber(event, subscriber));
 }
+
+TEST_F(routing_manager_ut_setup, transfers_any_event_placeholder_subscriber_for_implicit_eventgroup) {
+    const std::set<vsomeip_v3::eventgroup_t> eventgroups{event};
+
+    its_manager->register_event(subscriber, service, instance, vsomeip_v3::ANY_EVENT, eventgroups,
+                                vsomeip_v3::event_type_e::ET_UNKNOWN, vsomeip_v3::reliability_type_e::RT_UNKNOWN,
+                                std::chrono::milliseconds::zero(), false, true, nullptr, false, false, true);
+
+    const auto placeholder = its_manager->find_event(service, instance, vsomeip_v3::ANY_EVENT);
+    ASSERT_NE(nullptr, placeholder);
+    ASSERT_TRUE(placeholder->add_subscriber(event, nullptr, subscriber, false));
+
+    its_manager->register_event(subscriber, service, instance, event, {}, vsomeip_v3::event_type_e::ET_EVENT,
+                                vsomeip_v3::reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr,
+                                true, false, false);
+
+    const auto registered_event = its_manager->find_event(service, instance, event);
+    ASSERT_NE(nullptr, registered_event);
+    EXPECT_TRUE(registered_event->has_subscriber(event, subscriber));
+}

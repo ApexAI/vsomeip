@@ -317,6 +317,14 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
         }
     };
 
+    // An event without explicit eventgroups belongs to the eventgroup with
+    // the same ID as its notifier. Use that effective set consistently below,
+    // including when moving subscriptions from an ANY_EVENT placeholder.
+    std::set<eventgroup_t> its_eventgroups(_eventgroups);
+    if (its_eventgroups.empty()) {
+        its_eventgroups.insert(_notifier);
+    }
+
     std::shared_ptr<event> its_event = find_event(_service, _instance, _notifier);
     bool transfer_subscriptions_from_any_event(false);
     if (its_event) {
@@ -333,7 +341,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
                     its_event->set_shadow(false);
                     its_event->set_update_on_change(_update_on_change);
                 }
-                for (auto eg : _eventgroups) {
+                for (auto eg : its_eventgroups) {
                     its_event->add_eventgroup(eg);
                 }
                 transfer_subscriptions_from_any_event = true;
@@ -367,15 +375,8 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
             if (its_service) {
                 its_event->set_version(its_service->get_major());
             }
-            if (_eventgroups.size() == 0) { // No eventgroup specified
-                // A cache placeholder can already contain subscribers for the
-                // implicit eventgroup. Do not reset that client set while
-                // completing the event registration.
-                its_event->add_eventgroup(_notifier);
-            } else {
-                for (auto eg : _eventgroups) {
-                    its_event->add_eventgroup(eg);
-                }
+            for (auto eg : its_eventgroups) {
+                its_event->add_eventgroup(eg);
             }
 
             its_event->set_epsilon_change_function(_epsilon_change_func);
@@ -396,13 +397,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
             its_event->set_version(its_service->get_major());
         }
 
-        if (_eventgroups.size() == 0) { // No eventgroup specified
-            std::set<eventgroup_t> its_eventgroups;
-            its_eventgroups.insert(_notifier);
-            its_event->set_eventgroups(its_eventgroups);
-        } else {
-            its_event->set_eventgroups(_eventgroups);
-        }
+        its_event->set_eventgroups(its_eventgroups);
 
         if ((_is_shadow || is_routing_manager()) && !_epsilon_change_func) {
             std::shared_ptr<debounce_filter_impl_t> its_debounce = configuration_->get_default_debounce(_service, _instance, _notifier);
@@ -509,7 +504,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
         std::shared_ptr<event> its_any_event = find_event(_service, _instance, ANY_EVENT);
         if (its_any_event) {
             std::set<eventgroup_t> any_events_eventgroups = its_any_event->get_eventgroups();
-            for (eventgroup_t eventgroup : _eventgroups) {
+            for (eventgroup_t eventgroup : its_eventgroups) {
                 auto found_eg = any_events_eventgroups.find(eventgroup);
                 if (found_eg != any_events_eventgroups.end()) {
                     std::set<client_t> its_any_event_subscribers = its_any_event->get_subscribers(eventgroup);
@@ -524,7 +519,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
         its_event->add_ref(_client, _is_provided);
     }
 
-    for (auto eg : _eventgroups) {
+    for (auto eg : its_eventgroups) {
         std::shared_ptr<eventgroupinfo> its_eventgroupinfo = find_eventgroup(_service, _instance, eg);
         if (!its_eventgroupinfo) {
             its_eventgroupinfo = std::make_shared<eventgroupinfo>();
