@@ -30,7 +30,7 @@ TEST_F(routing_manager_ut_setup, DISABLED_set_routing_state_RS_SUSPENDED) {
 
     // Called on mock_host_ as a result of routing_manager_impl::del_routing_info being called
     // within the logic tree
-    EXPECT_CALL(mock_host_, on_availability(_, _, _, _, _)).Times(AtLeast(1));
+    EXPECT_CALL(mock_host_, on_availability(_, _, _, _, _, _)).Times(AtLeast(1));
 
     // Adding a service using add_routing_info this is a local service probably need to add remotes
     // for this test

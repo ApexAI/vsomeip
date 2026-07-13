@@ -167,6 +167,10 @@ protected:
                              const std::shared_ptr<debounce_filter_impl_t>& _filter, client_t _client,
                              std::set<event_t>* _already_subscribed_events);
 
+    bool add_eventgroup_subscriber(const std::shared_ptr<eventgroupinfo>& _eventgroup, eventgroup_t _eventgroup_id,
+                                   const std::shared_ptr<debounce_filter_impl_t>& _filter, client_t _client,
+                                   std::set<event_t>* _already_subscribed_events);
+
     void clear_shadow_subscriptions(void);
 
     std::shared_ptr<serializer> get_serializer();

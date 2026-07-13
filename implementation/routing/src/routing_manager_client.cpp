@@ -2393,21 +2393,24 @@ bool routing_manager_client::create_placeholder_event_and_subscribe(service_t _s
 
     bool is_inserted(false);
 
-    if (find_service(_service, _instance)) {
-        // We received an event for an existing service which was not yet
-        // requested/offered. Create a placeholder field until someone
-        // requests/offers this event with full information like eventgroup,
-        // field/event, etc.
-        std::set<eventgroup_t> its_eventgroups({_eventgroup});
-        // routing_manager_client: Always register with own client id and shadow = false
-        routing_manager_base::register_event(host_->get_client(), _service, _instance, _notifier, its_eventgroups, event_type_e::ET_UNKNOWN,
-                                             reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr, false,
-                                             false, true);
+    // The subscription can arrive while the provider is still registering its
+    // service/events. Do not drop it just because the service record is not
+    // visible at this instant: the cache placeholder is specifically meant to
+    // retain it until the later event registration transfers the subscriber.
+    std::set<eventgroup_t> its_eventgroups({_eventgroup});
+    // routing_manager_client: Always register with own client id and shadow = false
+    routing_manager_base::register_event(host_->get_client(), _service, _instance, _notifier, its_eventgroups, event_type_e::ET_UNKNOWN,
+                                         reliability_type_e::RT_UNKNOWN, std::chrono::milliseconds::zero(), false, true, nullptr, false,
+                                         false, true);
 
-        std::shared_ptr<event> its_event = find_event(_service, _instance, _notifier);
-        if (its_event) {
-            is_inserted = its_event->add_subscriber(_eventgroup, _filter, _client, false);
-        }
+    std::shared_ptr<event> its_event = find_event(_service, _instance, _notifier);
+    if (its_event) {
+        // The provider may have registered the event object but not offered it
+        // yet. In that state add_subscriber(..., false) rejects this otherwise
+        // valid local subscription and the later offer has nothing to transfer.
+        // Force the placeholder subscription into the event so the provider's
+        // registration/offer lifecycle retains it until notifications begin.
+        is_inserted = its_event->add_subscriber(_eventgroup, _filter, _client, true);
     }
 
     return is_inserted;

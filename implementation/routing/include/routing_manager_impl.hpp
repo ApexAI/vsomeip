@@ -9,6 +9,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
+#include <tuple>
 #include <vector>
 #include <list>
 #include <unordered_set>
@@ -276,6 +278,33 @@ private:
     void send_subscribe(client_t _client, service_t _service, instance_t _instance, eventgroup_t _eventgroup, major_version_t _major,
                         event_t _event, const std::shared_ptr<debounce_filter_impl_t>& _filter);
 
+    // A subscription for a service provided by another local application is
+    // forwarded over the local routing socket. Unlike subscriptions made by
+    // the routing-manager host, these were previously not retained when that
+    // one-shot forwarding attempt could not be made.
+    struct local_subscription_data_t {
+        client_t client_;
+        service_t service_;
+        instance_t instance_;
+        eventgroup_t eventgroup_;
+        major_version_t major_;
+        event_t event_;
+        std::shared_ptr<debounce_filter_impl_t> filter_;
+
+        bool operator<(const local_subscription_data_t& _other) const {
+            return std::tie(client_, service_, instance_, eventgroup_, major_, event_, filter_)
+                   < std::tie(_other.client_, _other.service_, _other.instance_, _other.eventgroup_, _other.major_, _other.event_,
+                              _other.filter_);
+        }
+    };
+
+    bool forward_local_subscription(const local_subscription_data_t& _subscription);
+    void send_pending_local_subscriptions(service_t _service, instance_t _instance, major_version_t _major);
+    void schedule_pending_local_subscription_retry();
+    void retry_pending_local_subscriptions(const boost::system::error_code& _error);
+    void remove_pending_local_subscription(client_t _client, service_t _service, instance_t _instance, eventgroup_t _eventgroup,
+                                           event_t _event);
+
     void on_net_interface_or_route_state_changed(bool _is_interface, const std::string& _if, bool _available);
 
     void start_ip_routing();
@@ -373,6 +402,15 @@ private:
 
     std::mutex remote_subscription_state_mutex_;
     std::map<std::tuple<service_t, instance_t, eventgroup_t, client_t>, subscription_state_e> remote_subscription_state_;
+
+    std::mutex pending_local_subscription_mutex_;
+    std::set<local_subscription_data_t> pending_local_subscriptions_;
+    // Entries that were replayed after an earlier forwarding failure. They are
+    // retained until unsubscribe so an unsubscribe racing with replay can be
+    // forwarded to the provider as well.
+    std::set<local_subscription_data_t> forwarded_pending_local_subscriptions_;
+    boost::asio::steady_timer pending_local_subscription_timer_;
+    bool pending_local_subscription_retry_scheduled_;
 
     std::shared_ptr<e2e::e2e_provider> e2e_provider_;
 
