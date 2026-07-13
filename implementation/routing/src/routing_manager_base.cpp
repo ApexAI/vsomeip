@@ -1229,6 +1229,29 @@ bool routing_manager_base::insert_subscription(service_t _service, instance_t _i
                             << "unoffered) event. Creating placeholder event holding "
                             << "subscription until event is requested/offered.";
             is_inserted = create_placeholder_event_and_subscribe(_service, _instance, _eventgroup, _event, _filter, _client);
+
+            // create_placeholder_event_and_subscribe registers an ANY_EVENT
+            // placeholder. A provider registration can complete after the
+            // initial eventgroup lookup above but before that placeholder is
+            // populated. In that ordering the provider's one-time transfer
+            // from the placeholder has already run, so the new subscriber
+            // would otherwise remain attached only to ANY_EVENT.
+            //
+            // Serialize the reconciliation with register_event(). If the
+            // provider registration completed first, attach the subscriber to
+            // every concrete event now in the eventgroup. If it starts after
+            // this critical section, it observes the populated placeholder
+            // and performs its normal transfer.
+            std::lock_guard<std::mutex> its_registration_lock(event_registration_mutex_);
+            for (const auto& its_event : find_events(_service, _instance, _eventgroup)) {
+                if (its_event->get_event() == ANY_EVENT) {
+                    continue;
+                }
+                if (_already_subscribed_events && its_event->is_subscribed(_client)) {
+                    _already_subscribed_events->insert(its_event->get_event());
+                }
+                is_inserted = its_event->add_subscriber(_eventgroup, _filter, _client, host_->is_routing()) || is_inserted;
+            }
         }
     } else { // subscribe to all events of the eventgroup
         std::shared_ptr<eventgroupinfo> its_eventgroup = find_eventgroup(_service, _instance, _eventgroup);
