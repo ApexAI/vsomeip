@@ -1,8 +1,8 @@
-load("//bazel:expand_template.bzl", "expand_template")
 load("@apex//common/bazel/rules_cc:defs.bzl", "apex_cc_library")
 load("@vsomeip//bazel:version.bzl", "version_dict_from_string")
+load("//bazel:expand_template.bzl", "expand_template")
 
-APEX_VSOMEIP_VERSION_TAG = "3.6.1-apex8-fix-qnx-gateway-com-02"  # Must match the git tag version.
+APEX_VSOMEIP_VERSION_TAG = "3.6.1-apex9-fix-subscription-management-07"  # Must match the git tag version.
 
 expand_template(
     name = "config",
@@ -57,7 +57,10 @@ apex_cc_library(
             "configuration/src/*.cpp",
         ],
     ),
-    visibility = ["//:__pkg__"],
+    visibility = [
+        "//:__pkg__",
+        "//test/unit_tests/routing_manager_tests:__pkg__",
+    ],
     deps = [
         ":implementation",
         "@boost//:filesystem",
@@ -71,10 +74,14 @@ apex_cc_library(
             "service_discovery/src/*.cpp",
         ],
     ),
-    visibility = ["//:__pkg__"],
+    visibility = [
+        "//:__pkg__",
+        "//test/unit_tests/routing_manager_tests:__pkg__",
+    ],
     deps = [
         ":implementation",
     ],
+    alwayslink = True,
 )
 
 apex_cc_library(
@@ -127,11 +134,14 @@ apex_cc_library(
         "VSOMEIP_INTERNAL_SUPPRESS_DEPRECATED",
     ],
     tags = ["same-ros-pkg-as: @vsomeip//:vsomeip3"],
-    visibility = ["//:__pkg__"],
+    visibility = [
+        "//:__pkg__",
+        "//test/unit_tests/routing_manager_tests:__pkg__",
+    ],
     deps = [
         ":generated_config",
         ":helper",
-        "@boost//:headers",
         "//interface",
+        "@boost//:headers",
     ],
 )

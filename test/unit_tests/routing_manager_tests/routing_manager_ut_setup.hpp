@@ -11,9 +11,10 @@
 #include <boost/asio.hpp>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <vsomeip/vsomeip.hpp>
 
-#include <common/utility.hpp>
-
+#include "../../../implementation/configuration/include/configuration_impl.hpp"
+#include "../../../implementation/routing/include/routing_manager_impl.hpp"
 #include "mocks/mock_routing_manager_host.hpp"
 
 class routing_manager_ut_setup : public testing::Test {
