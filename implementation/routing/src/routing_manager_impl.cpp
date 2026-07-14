@@ -737,7 +737,8 @@ void routing_manager_impl::unsubscribe(client_t _client, const vsomeip_sec_clien
 
     bool last_subscriber_removed(true);
 
-    remove_pending_local_subscription(_client, _service, _instance, _eventgroup, _event);
+    const bool its_replayed_subscription_removed =
+            remove_pending_local_subscription(_client, _service, _instance, _eventgroup, _event);
 
     std::shared_ptr<eventgroupinfo> its_info = find_eventgroup(_service, _instance, _eventgroup);
     if (its_info) {
@@ -780,7 +781,7 @@ void routing_manager_impl::unsubscribe(client_t _client, const vsomeip_sec_clien
         } else {
             if (get_client() == _client) {
                 remove_pending_subscription(_service, _instance, _eventgroup, _event);
-                if (stub_)
+                if (stub_ && !its_replayed_subscription_removed)
                     stub_->send_unsubscribe(ep_mgr_->find_local(_service, _instance), _client, _service, _instance, _eventgroup, _event,
                                             PENDING_SUBSCRIPTION_ID);
             }
@@ -3290,7 +3291,7 @@ void routing_manager_impl::retry_pending_local_subscriptions(const boost::system
         schedule_pending_local_subscription_retry();
 }
 
-void routing_manager_impl::remove_pending_local_subscription(client_t _client, service_t _service, instance_t _instance,
+bool routing_manager_impl::remove_pending_local_subscription(client_t _client, service_t _service, instance_t _instance,
                                                               eventgroup_t _eventgroup, event_t _event) {
     std::scoped_lock its_lock(pending_local_subscription_mutex_);
     for (auto its_subscription = pending_local_subscriptions_.begin(); its_subscription != pending_local_subscriptions_.end();) {
@@ -3317,6 +3318,8 @@ void routing_manager_impl::remove_pending_local_subscription(client_t _client, s
     if (was_forwarded && stub_)
         stub_->send_unsubscribe(ep_mgr_->find_local(_service, _instance), _client, _service, _instance, _eventgroup, _event,
                                 PENDING_SUBSCRIPTION_ID);
+
+    return was_forwarded;
 }
 
 bool routing_manager_impl::is_suspended() const {

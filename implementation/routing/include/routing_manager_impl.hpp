@@ -302,7 +302,7 @@ private:
     void send_pending_local_subscriptions(service_t _service, instance_t _instance, major_version_t _major);
     void schedule_pending_local_subscription_retry();
     void retry_pending_local_subscriptions(const boost::system::error_code& _error);
-    void remove_pending_local_subscription(client_t _client, service_t _service, instance_t _instance, eventgroup_t _eventgroup,
+    bool remove_pending_local_subscription(client_t _client, service_t _service, instance_t _instance, eventgroup_t _eventgroup,
                                            event_t _event);
 
     void on_net_interface_or_route_state_changed(bool _is_interface, const std::string& _if, bool _available);
