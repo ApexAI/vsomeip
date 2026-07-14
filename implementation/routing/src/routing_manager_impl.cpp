@@ -92,10 +92,11 @@ runtime::~runtime() { }
 
 routing_manager_impl::routing_manager_impl(routing_manager_host* _host) :
     routing_manager_base(_host), version_log_timer_(_host->get_io()), if_state_running_(false), sd_route_set_(false),
-    routing_running_(false), routing_state_(configuration_->get_initial_routing_state()), status_log_timer_(_host->get_io()),
-    memory_log_timer_(_host->get_io()), ep_mgr_impl_(std::make_shared<endpoint_manager_impl>(this, io_, configuration_)),
-    pending_remote_offer_id_(0), last_resume_(std::chrono::steady_clock::time_point::min()), statistics_log_timer_(_host->get_io()),
-    ignored_statistics_counter_(0) {
+    routing_running_(false), routing_state_(configuration_->get_initial_routing_state()),
+    pending_local_subscription_timer_(_host->get_io()), pending_local_subscription_retry_scheduled_(false),
+    status_log_timer_(_host->get_io()), memory_log_timer_(_host->get_io()),
+    ep_mgr_impl_(std::make_shared<endpoint_manager_impl>(this, io_, configuration_)), pending_remote_offer_id_(0),
+    last_resume_(std::chrono::steady_clock::time_point::min()), statistics_log_timer_(_host->get_io()), ignored_statistics_counter_(0) {
 
     VSOMEIP_INFO << "Starting Routing Manager [Host] with state " << routing_state_tostring(routing_state_);
 }
@@ -307,6 +308,12 @@ void routing_manager_impl::stop() {
     }
 
     {
+        std::scoped_lock its_lock{pending_local_subscription_mutex_};
+        pending_local_subscription_timer_.cancel();
+        pending_local_subscription_retry_scheduled_ = false;
+    }
+
+    {
         std::scoped_lock its_lock{statistics_log_timer_mutex_};
         statistics_log_timer_.cancel();
     }
@@ -454,6 +461,7 @@ bool routing_manager_impl::offer_service(client_t _client, service_t _service, i
         }
 
         send_pending_subscriptions(_service, _instance, _major);
+        send_pending_local_subscriptions(_service, _instance, _major);
     }
     erase_offer_command(_service, _instance);
     if (stub_)
@@ -702,9 +710,11 @@ void routing_manager_impl::subscribe(client_t _client, const vsomeip_sec_client_
                     }
                 } else {
                     its_critical.unlock();
-                    if (is_available(_service, _instance, _major) && stub_) {
-                        stub_->send_subscribe(ep_mgr_->find_local(_service, _instance), _client, _service, _instance, _eventgroup, _major,
-                                              _event, _filter, PENDING_SUBSCRIPTION_ID);
+                    const local_subscription_data_t its_subscription = {_client, _service, _instance, _eventgroup, _major, _event, _filter};
+                    std::scoped_lock its_pending_lock(pending_local_subscription_mutex_);
+                    if (!forward_local_subscription(its_subscription)) {
+                        pending_local_subscriptions_.insert(its_subscription);
+                        schedule_pending_local_subscription_retry();
                     }
                 }
             }
@@ -726,6 +736,8 @@ void routing_manager_impl::unsubscribe(client_t _client, const vsomeip_sec_clien
                  << std::setw(4) << _instance << "." << std::setw(4) << _eventgroup << "." << std::setw(4) << _event << "]";
 
     bool last_subscriber_removed(true);
+
+    remove_pending_local_subscription(_client, _service, _instance, _eventgroup, _event);
 
     std::shared_ptr<eventgroupinfo> its_info = find_eventgroup(_service, _instance, _eventgroup);
     if (its_info) {
@@ -3216,6 +3228,95 @@ void routing_manager_impl::send_subscribe(client_t _client, service_t _service, 
     if (endpoint && stub_) {
         stub_->send_subscribe(endpoint, _client, _service, _instance, _eventgroup, _major, _event, _filter, PENDING_SUBSCRIPTION_ID);
     }
+}
+
+bool routing_manager_impl::forward_local_subscription(const local_subscription_data_t& _subscription) {
+    if (!stub_ || !is_available(_subscription.service_, _subscription.instance_, _subscription.major_)) {
+        return false;
+    }
+
+    const auto endpoint = ep_mgr_->find_local(_subscription.service_, _subscription.instance_);
+    if (!endpoint) {
+        return false;
+    }
+
+    return stub_->send_subscribe(endpoint, _subscription.client_, _subscription.service_, _subscription.instance_,
+                                 _subscription.eventgroup_, _subscription.major_, _subscription.event_, _subscription.filter_,
+                                 PENDING_SUBSCRIPTION_ID);
+}
+
+void routing_manager_impl::send_pending_local_subscriptions(service_t _service, instance_t _instance, major_version_t _major) {
+    std::scoped_lock its_lock(pending_local_subscription_mutex_);
+    for (auto its_subscription = pending_local_subscriptions_.begin(); its_subscription != pending_local_subscriptions_.end();) {
+        if (its_subscription->service_ == _service && its_subscription->instance_ == _instance
+            && its_subscription->major_ == _major && forward_local_subscription(*its_subscription)) {
+            forwarded_pending_local_subscriptions_.insert(*its_subscription);
+            its_subscription = pending_local_subscriptions_.erase(its_subscription);
+        } else {
+            ++its_subscription;
+        }
+    }
+
+    if (!pending_local_subscriptions_.empty())
+        schedule_pending_local_subscription_retry();
+}
+
+void routing_manager_impl::schedule_pending_local_subscription_retry() {
+    if (pending_local_subscription_retry_scheduled_)
+        return;
+
+    pending_local_subscription_retry_scheduled_ = true;
+    pending_local_subscription_timer_.expires_after(std::chrono::milliseconds(100));
+    pending_local_subscription_timer_.async_wait(
+            std::bind(&routing_manager_impl::retry_pending_local_subscriptions, this, std::placeholders::_1));
+}
+
+void routing_manager_impl::retry_pending_local_subscriptions(const boost::system::error_code& _error) {
+    std::scoped_lock its_lock(pending_local_subscription_mutex_);
+    pending_local_subscription_retry_scheduled_ = false;
+    if (_error)
+        return;
+
+    for (auto its_subscription = pending_local_subscriptions_.begin(); its_subscription != pending_local_subscriptions_.end();) {
+        if (forward_local_subscription(*its_subscription)) {
+            forwarded_pending_local_subscriptions_.insert(*its_subscription);
+            its_subscription = pending_local_subscriptions_.erase(its_subscription);
+        } else {
+            ++its_subscription;
+        }
+    }
+
+    if (!pending_local_subscriptions_.empty())
+        schedule_pending_local_subscription_retry();
+}
+
+void routing_manager_impl::remove_pending_local_subscription(client_t _client, service_t _service, instance_t _instance,
+                                                              eventgroup_t _eventgroup, event_t _event) {
+    std::scoped_lock its_lock(pending_local_subscription_mutex_);
+    for (auto its_subscription = pending_local_subscriptions_.begin(); its_subscription != pending_local_subscriptions_.end();) {
+        if (its_subscription->client_ == _client && its_subscription->service_ == _service
+            && its_subscription->instance_ == _instance && its_subscription->eventgroup_ == _eventgroup
+            && (_event == ANY_EVENT || its_subscription->event_ == _event)) {
+            its_subscription = pending_local_subscriptions_.erase(its_subscription);
+        } else {
+            ++its_subscription;
+        }
+    }
+    bool was_forwarded(false);
+    for (auto its_subscription = forwarded_pending_local_subscriptions_.begin();
+         its_subscription != forwarded_pending_local_subscriptions_.end();) {
+        if (its_subscription->client_ == _client && its_subscription->service_ == _service
+            && its_subscription->instance_ == _instance && its_subscription->eventgroup_ == _eventgroup
+            && (_event == ANY_EVENT || its_subscription->event_ == _event)) {
+            was_forwarded = true;
+            its_subscription = forwarded_pending_local_subscriptions_.erase(its_subscription);
+        } else {
+            ++its_subscription;
+        }
+    }
+    if (was_forwarded && stub_)
+        stub_->send_unsubscribe(ep_mgr_->find_local(_service, _instance), _client, _service, _instance, _eventgroup, _event,
+                                PENDING_SUBSCRIPTION_ID);
 }
 
 bool routing_manager_impl::is_suspended() const {

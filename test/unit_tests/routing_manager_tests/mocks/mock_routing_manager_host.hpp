@@ -21,7 +21,8 @@ public:
     MOCK_METHOD(boost::asio::io_context&, get_io, (), (override));
 
     MOCK_METHOD(void, on_availability,
-                (service_t _service, instance_t _instance, availability_state_e _state, major_version_t _major, minor_version_t _minor),
+                (service_t _service, instance_t _instance, availability_state_e _state, major_version_t _major, minor_version_t _minor,
+                 availability_reason_e _reason),
                 (override));
     MOCK_METHOD(void, on_state, (state_type_e _state), (override));
     MOCK_METHOD(void, on_message, (std::shared_ptr<message> && _message), (override));

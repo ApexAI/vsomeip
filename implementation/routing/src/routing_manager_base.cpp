@@ -317,6 +317,14 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
         }
     };
 
+    // An event without explicit eventgroups belongs to the eventgroup with
+    // the same ID as its notifier. Use that effective set consistently below,
+    // including when moving subscriptions from an ANY_EVENT placeholder.
+    std::set<eventgroup_t> its_eventgroups(_eventgroups);
+    if (its_eventgroups.empty()) {
+        its_eventgroups.insert(_notifier);
+    }
+
     std::shared_ptr<event> its_event = find_event(_service, _instance, _notifier);
     bool transfer_subscriptions_from_any_event(false);
     if (its_event) {
@@ -333,7 +341,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
                     its_event->set_shadow(false);
                     its_event->set_update_on_change(_update_on_change);
                 }
-                for (auto eg : _eventgroups) {
+                for (auto eg : its_eventgroups) {
                     its_event->add_eventgroup(eg);
                 }
                 transfer_subscriptions_from_any_event = true;
@@ -367,14 +375,8 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
             if (its_service) {
                 its_event->set_version(its_service->get_major());
             }
-            if (_eventgroups.size() == 0) { // No eventgroup specified
-                std::set<eventgroup_t> its_eventgroups;
-                its_eventgroups.insert(_notifier);
-                its_event->set_eventgroups(its_eventgroups);
-            } else {
-                for (auto eg : _eventgroups) {
-                    its_event->add_eventgroup(eg);
-                }
+            for (auto eg : its_eventgroups) {
+                its_event->add_eventgroup(eg);
             }
 
             its_event->set_epsilon_change_function(_epsilon_change_func);
@@ -395,13 +397,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
             its_event->set_version(its_service->get_major());
         }
 
-        if (_eventgroups.size() == 0) { // No eventgroup specified
-            std::set<eventgroup_t> its_eventgroups;
-            its_eventgroups.insert(_notifier);
-            its_event->set_eventgroups(its_eventgroups);
-        } else {
-            its_event->set_eventgroups(_eventgroups);
-        }
+        its_event->set_eventgroups(its_eventgroups);
 
         if ((_is_shadow || is_routing_manager()) && !_epsilon_change_func) {
             std::shared_ptr<debounce_filter_impl_t> its_debounce = configuration_->get_default_debounce(_service, _instance, _notifier);
@@ -508,7 +504,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
         std::shared_ptr<event> its_any_event = find_event(_service, _instance, ANY_EVENT);
         if (its_any_event) {
             std::set<eventgroup_t> any_events_eventgroups = its_any_event->get_eventgroups();
-            for (eventgroup_t eventgroup : _eventgroups) {
+            for (eventgroup_t eventgroup : its_eventgroups) {
                 auto found_eg = any_events_eventgroups.find(eventgroup);
                 if (found_eg != any_events_eventgroups.end()) {
                     std::set<client_t> its_any_event_subscribers = its_any_event->get_subscribers(eventgroup);
@@ -523,7 +519,7 @@ void routing_manager_base::register_event(client_t _client, service_t _service, 
         its_event->add_ref(_client, _is_provided);
     }
 
-    for (auto eg : _eventgroups) {
+    for (auto eg : its_eventgroups) {
         std::shared_ptr<eventgroupinfo> its_eventgroupinfo = find_eventgroup(_service, _instance, eg);
         if (!its_eventgroupinfo) {
             its_eventgroupinfo = std::make_shared<eventgroupinfo>();
@@ -1233,6 +1229,29 @@ bool routing_manager_base::insert_subscription(service_t _service, instance_t _i
                             << "unoffered) event. Creating placeholder event holding "
                             << "subscription until event is requested/offered.";
             is_inserted = create_placeholder_event_and_subscribe(_service, _instance, _eventgroup, _event, _filter, _client);
+
+            // create_placeholder_event_and_subscribe registers an ANY_EVENT
+            // placeholder. A provider registration can complete after the
+            // initial eventgroup lookup above but before that placeholder is
+            // populated. In that ordering the provider's one-time transfer
+            // from the placeholder has already run, so the new subscriber
+            // would otherwise remain attached only to ANY_EVENT.
+            //
+            // Serialize the reconciliation with register_event(). If the
+            // provider registration completed first, attach the subscriber to
+            // every concrete event now in the eventgroup. If it starts after
+            // this critical section, it observes the populated placeholder
+            // and performs its normal transfer.
+            std::lock_guard<std::mutex> its_registration_lock(event_registration_mutex_);
+            for (const auto& its_event : find_events(_service, _instance, _eventgroup)) {
+                if (its_event->get_event() == ANY_EVENT) {
+                    continue;
+                }
+                if (_already_subscribed_events && its_event->is_subscribed(_client)) {
+                    _already_subscribed_events->insert(its_event->get_event());
+                }
+                is_inserted = its_event->add_subscriber(_eventgroup, _filter, _client, host_->is_routing()) || is_inserted;
+            }
         }
     } else { // subscribe to all events of the eventgroup
         std::shared_ptr<eventgroupinfo> its_eventgroup = find_eventgroup(_service, _instance, _eventgroup);
@@ -1242,15 +1261,7 @@ bool routing_manager_base::insert_subscription(service_t _service, instance_t _i
             if (!its_events.size()) {
                 create_place_holder = true;
             } else {
-                for (const auto& e : its_events) {
-                    if (e->is_subscribed(_client)) {
-                        // client is already subscribed to event from eventgroup
-                        // this can happen if events are members of multiple
-                        // eventgroups
-                        _already_subscribed_events->insert(e->get_event());
-                    }
-                    is_inserted = e->add_subscriber(_eventgroup, _filter, _client, host_->is_routing()) || is_inserted;
-                }
+                is_inserted = add_eventgroup_subscriber(its_eventgroup, _eventgroup, _filter, _client, _already_subscribed_events);
             }
         } else {
             create_place_holder = true;
@@ -1263,7 +1274,33 @@ bool routing_manager_base::insert_subscription(service_t _service, instance_t _i
                             << "unoffered) eventgroup. Creating placeholder event holding "
                             << "subscription until event is requested/offered.";
             is_inserted = create_placeholder_event_and_subscribe(_service, _instance, _eventgroup, _event, _filter, _client);
+
+            // Registration may have transferred pending ANY_EVENT subscribers
+            // before this placeholder was populated, then published the concrete
+            // eventgroup while placeholder creation waited for registration to
+            // finish. Re-read the group and apply the subscription to its concrete
+            // members so the final state does not depend on that ordering.
+            its_eventgroup = find_eventgroup(_service, _instance, _eventgroup);
+            if (its_eventgroup && !its_eventgroup->get_events().empty()) {
+                is_inserted =
+                        add_eventgroup_subscriber(its_eventgroup, _eventgroup, _filter, _client, _already_subscribed_events) || is_inserted;
+            }
         }
+    }
+    return is_inserted;
+}
+
+bool routing_manager_base::add_eventgroup_subscriber(const std::shared_ptr<eventgroupinfo>& _eventgroup, eventgroup_t _eventgroup_id,
+                                                     const std::shared_ptr<debounce_filter_impl_t>& _filter, client_t _client,
+                                                     std::set<event_t>* _already_subscribed_events) {
+    bool is_inserted(false);
+    for (const auto& its_event : _eventgroup->get_events()) {
+        if (its_event->is_subscribed(_client)) {
+            // A client can already be subscribed when an event belongs to
+            // multiple eventgroups.
+            _already_subscribed_events->insert(its_event->get_event());
+        }
+        is_inserted = its_event->add_subscriber(_eventgroup_id, _filter, _client, host_->is_routing()) || is_inserted;
     }
     return is_inserted;
 }
