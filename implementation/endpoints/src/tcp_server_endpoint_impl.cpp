@@ -544,6 +544,10 @@ void tcp_server_endpoint_impl::connection::send_queued(const target_data_iterato
         const capture_metadata_t its_capture_metadata{
                 capture_direction_e::TX, capture_transport_e::TCP, its_local_endpoint.address(), its_local_endpoint.port(),
                 remote_address_, remote_port_, std::nullopt};
+        VSOMEIP_DEBUG << "[someip_send_debug] TCP server async send started: local=" << its_local_endpoint.address().to_string()
+                      << ":" << its_local_endpoint.port() << " remote=" << remote_address_.to_string() << ":" << remote_port_
+                      << " service=" << std::hex << std::setfill('0') << std::setw(4) << its_service << " method="
+                      << std::setw(4) << its_method << " bytes=" << std::dec << its_buffer->size();
 
         boost::asio::async_write(
                 socket_, boost::asio::buffer(*its_buffer),
@@ -552,6 +556,8 @@ void tcp_server_endpoint_impl::connection::send_queued(const target_data_iterato
                           std::chrono::steady_clock::now()),
                 [its_server, target = _it->first, buffer = its_buffer, its_capture_metadata](const boost::system::error_code& _error,
                                                                                               std::size_t _bytes) {
+                    VSOMEIP_DEBUG << "[someip_send_debug] TCP server async send " << (_error ? "failed" : "completed")
+                                  << ": bytes=" << _bytes << (_error ? " error=" + _error.message() : "");
                     if (_bytes > 0) {
                         capture(buffer->data(), _bytes, its_capture_metadata);
                     }

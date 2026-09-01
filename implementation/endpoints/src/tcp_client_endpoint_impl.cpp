@@ -366,6 +366,10 @@ void tcp_client_endpoint_impl::send_queued(std::pair<message_buffer_ptr_t, uint3
             const capture_metadata_t its_capture_metadata{
                     capture_direction_e::TX, capture_transport_e::TCP, its_local_endpoint.address(), its_local_endpoint.port(),
                     remote_address_, remote_port_, std::nullopt};
+            VSOMEIP_DEBUG << "[someip_send_debug] TCP client async send started: local=" << its_local_endpoint.address().to_string()
+                          << ":" << its_local_endpoint.port() << " remote=" << remote_address_.to_string() << ":" << remote_port_
+                          << " service=" << std::hex << std::setfill('0') << std::setw(4) << its_service << " method="
+                          << std::setw(4) << its_method << " bytes=" << std::dec << _entry.first->size();
             socket_->async_write(
                     boost::asio::buffer(*_entry.first),
                     [this, self = shared_from_this(), to_be_send_length = _entry.first->size(), when = std::chrono::steady_clock::now(),
@@ -378,12 +382,15 @@ void tcp_client_endpoint_impl::send_queued(std::pair<message_buffer_ptr_t, uint3
                             // copy the buffer into the callback to keep the buffer itself alive
                             [this, self = shared_from_this(), buffer = _entry.first,
                              capture_metadata = its_capture_metadata](auto ec, auto size) {
+                                VSOMEIP_DEBUG << "[someip_send_debug] TCP client async send " << (ec ? "failed" : "completed")
+                                              << ": bytes=" << size << (ec ? " error=" + ec.message() : "");
                                 if (size > 0) {
                                     capture(buffer->data(), size, capture_metadata);
                                 }
                                 send_cbk(ec, size, buffer);
                             }));
         } else {
+            VSOMEIP_DEBUG << "[someip_send_debug] TCP client async send rejected: socket is not open";
             VSOMEIP_WARNING << "tcei::" << __func__ << ": try to send while socket was not open | endpoint > " << this;
             was_not_connected_ = true;
             is_sending_ = false;

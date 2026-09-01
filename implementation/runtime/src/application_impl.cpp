@@ -913,7 +913,14 @@ void application_impl::send(std::shared_ptr<message> _message) {
             _message->set_session(get_session(true));
         }
         // Always increment the session-id
-        (void)routing_->send(client_, _message, false);
+        const bool its_sent = routing_->send(client_, _message, false);
+        VSOMEIP_DEBUG << "[someip_send_debug] application routing submission " << (its_sent ? "accepted" : "rejected")
+                      << ": service=" << std::hex << std::setfill('0') << std::setw(4) << _message->get_service()
+                      << " instance=" << std::setw(4) << _message->get_instance() << " method=" << std::setw(4)
+                      << _message->get_method() << " client=" << std::setw(4) << _message->get_client() << " session="
+                      << std::setw(4) << _message->get_session();
+    } else {
+        VSOMEIP_DEBUG << "[someip_send_debug] application routing submission rejected: routing manager is not available";
     }
 }
 

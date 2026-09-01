@@ -193,12 +193,16 @@ bool local_uds_client_endpoint_impl::send(const uint8_t* _data, uint32_t _size) 
     std::lock_guard<std::recursive_mutex> its_lock(mutex_);
 
     if (endpoint_impl::sending_blocked_ || !check_queue_limit(_data, _size)) {
+        VSOMEIP_DEBUG << "[someip_send_debug] local UDS queue rejected: "
+                      << (endpoint_impl::sending_blocked_ ? "sending blocked" : "queue limit exceeded") << " bytes=" << _size;
         return false;
     }
     if (!check_message_size(_size)) {
+        VSOMEIP_DEBUG << "[someip_send_debug] local UDS queue rejected: message too large, bytes=" << _size;
         return false;
     }
     if (!check_packetizer_space(_size)) {
+        VSOMEIP_DEBUG << "[someip_send_debug] local UDS queue rejected: packetizer full, bytes=" << _size;
         return false;
     }
 #if 0
@@ -213,6 +217,7 @@ bool local_uds_client_endpoint_impl::send(const uint8_t* _data, uint32_t _size) 
     train_->buffer_->insert(train_->buffer_->end(), _data, _data + _size);
     queue_train(train_);
     train_->buffer_ = std::make_shared<message_buffer_t>();
+    VSOMEIP_DEBUG << "[someip_send_debug] local UDS queue accepted: bytes=" << _size;
     return true;
 }
 
@@ -233,11 +238,16 @@ void local_uds_client_endpoint_impl::send_queued(std::pair<message_buffer_ptr_t,
         auto buffer_ptr = _entry.first; // Capture shared_ptr to ensure it stays alive
 
         if (socket_->is_open()) {
+            VSOMEIP_DEBUG << "[someip_send_debug] local UDS async send started: bytes=" << buffer_ptr->size();
             boost::asio::async_write(*socket_, bufs,
                                      strand_.wrap([its_me, buffer_ptr](const boost::system::error_code& ec, std::size_t bytes_transferred) {
+                                         VSOMEIP_DEBUG << "[someip_send_debug] local UDS async send "
+                                                       << (ec ? "failed" : "completed") << ": bytes=" << bytes_transferred
+                                                       << (ec ? " error=" + ec.message() : "");
                                          its_me->send_cbk(ec, bytes_transferred, buffer_ptr);
                                      }));
         } else {
+            VSOMEIP_DEBUG << "[someip_send_debug] local UDS async send rejected: socket is not open";
             VSOMEIP_WARNING << "lucei::" << __func__ << ": try to send while socket was not open | endpoint > " << this;
             was_not_connected_ = true;
             is_sending_ = false;

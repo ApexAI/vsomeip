@@ -847,6 +847,7 @@ bool routing_manager_base::send(client_t _client, std::shared_ptr<message> _mess
                             << "}: Service not available. instance=" << std::setw(4) << _message->get_instance()
                             << " version=" << std::setw(4) << _message->get_interface_version();
             if (!_force) {
+                VSOMEIP_DEBUG << "[someip_send_debug] routing send rejected: service unavailable";
                 return is_sent;
             }
         }
@@ -857,10 +858,15 @@ bool routing_manager_base::send(client_t _client, std::shared_ptr<message> _mess
         auto const sec_client = get_sec_client();
         is_sent = send(_client, its_serializer->get_data(), its_serializer->get_size(), _message->get_instance(), _message->is_reliable(),
                        get_client(), &sec_client, 0, false, _force);
+        VSOMEIP_DEBUG << "[someip_send_debug] routing send " << (is_sent ? "accepted by endpoint" : "rejected by endpoint")
+                      << ": service=" << std::hex << std::setfill('0') << std::setw(4) << _message->get_service()
+                      << " instance=" << std::setw(4) << _message->get_instance() << " method=" << std::setw(4)
+                      << _message->get_method() << " bytes=" << std::dec << its_serializer->get_size();
         its_serializer->reset();
         put_serializer(its_serializer);
     } else {
         VSOMEIP_ERROR << "Failed to serialize message. Check message size!";
+        VSOMEIP_DEBUG << "[someip_send_debug] routing send rejected: serialization failed";
     }
     return is_sent;
 }

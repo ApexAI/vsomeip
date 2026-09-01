@@ -495,9 +495,15 @@ bool udp_server_endpoint_impl::send_queued_unlocked(const target_data_iterator_t
         const capture_metadata_t its_capture_metadata{
                 capture_direction_e::TX, capture_transport_e::UDP, local_.address(), local_.port(), _it->first.address(),
                 _it->first.port(), std::nullopt};
+        VSOMEIP_DEBUG << "[someip_send_debug] UDP server async send started: local=" << local_.address().to_string() << ":"
+                      << local_.port() << " remote=" << _it->first.address().to_string() << ":" << _it->first.port()
+                      << " bytes=" << its_entry.first->size();
         unicast_socket_->async_send_to(boost::asio::buffer(*its_entry.first), _it->first,
                                        [its_me, _it, its_entry, its_capture_metadata](const boost::system::error_code& _error,
                                                                                       std::size_t _bytes) {
+                                           VSOMEIP_DEBUG << "[someip_send_debug] UDP server async send "
+                                                         << (_error ? "failed" : "completed") << ": bytes=" << _bytes
+                                                         << (_error ? " error=" + _error.message() : "");
                                            if (_bytes > 0) {
                                                capture(its_entry.first->data(), _bytes, its_capture_metadata);
                                            }

@@ -736,6 +736,7 @@ bool routing_manager_client::send(client_t _client, const byte_t* _data, length_
     bool has_remote_subscribers{false};
     {
         if (state_ != inner_state_type_e::ST_REGISTERED) {
+            VSOMEIP_DEBUG << "[someip_send_debug] routing-client send rejected: client is not registered";
             return false;
         }
     }
@@ -803,6 +804,7 @@ bool routing_manager_client::send(client_t _client, const byte_t* _data, length_
                 its_target = sender_;
                 message_to_stub = true;
             } else {
+                VSOMEIP_DEBUG << "[someip_send_debug] routing-client send rejected: no local target and no routing-manager connection";
                 return false;
             }
         }
@@ -823,11 +825,15 @@ bool routing_manager_client::send(client_t _client, const byte_t* _data, length_
         if (send) {
             auto its_client{its_command == protocol::id_e::NOTIFY_ONE_ID ? _client : get_client()};
             is_sent = send_local(its_target, its_client, _data, _size, _instance, _reliable, its_command, _status_check);
+            VSOMEIP_DEBUG << "[someip_send_debug] routing-client IPC submission " << (is_sent ? "accepted" : "rejected")
+                          << ": route=" << (message_to_stub ? "routing-manager" : "local-client") << " bytes=" << std::dec << _size;
             if (is_sent && !utility::is_notification(VSOMEIP_MESSAGE_TYPE_POS) && !message_to_stub) {
                 trace::header its_header;
                 if (its_header.prepare(nullptr, true, _instance))
                     tc_->trace(its_header.data_, VSOMEIP_TRACE_HEADER_SIZE, _data, _size);
             }
+        } else {
+            VSOMEIP_DEBUG << "[someip_send_debug] routing-client notification not forwarded: no remote subscribers";
         }
     }
     return is_sent;

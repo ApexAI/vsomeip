@@ -240,10 +240,15 @@ void udp_client_endpoint_impl::send_queued(std::pair<message_buffer_ptr_t, uint3
         const capture_metadata_t its_capture_metadata{
                 capture_direction_e::TX, capture_transport_e::UDP, its_local_endpoint.address(), its_local_endpoint.port(),
                 remote_address_, remote_port_, std::nullopt};
+        VSOMEIP_DEBUG << "[someip_send_debug] UDP client async send started: local=" << its_local_endpoint.address().to_string()
+                      << ":" << its_local_endpoint.port() << " remote=" << remote_address_.to_string() << ":" << remote_port_
+                      << " bytes=" << _entry.first->size();
         socket_->async_send(
                 boost::asio::buffer(*_entry.first),
                 [self = shared_from_this(), sent_msg = _entry.first, capture_metadata = its_capture_metadata](
                         const boost::system::error_code& _error, std::size_t _bytes) {
+                    VSOMEIP_DEBUG << "[someip_send_debug] UDP client async send " << (_error ? "failed" : "completed")
+                                  << ": bytes=" << _bytes << (_error ? " error=" + _error.message() : "");
                     if (_bytes > 0) {
                         capture(sent_msg->data(), _bytes, capture_metadata);
                     }

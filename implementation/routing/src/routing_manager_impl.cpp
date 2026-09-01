@@ -805,6 +805,7 @@ bool routing_manager_impl::send(client_t _client, std::shared_ptr<message> _mess
                             << "}: Remote service not available. instance=" << std::setw(4) << _message->get_instance()
                             << " version=" << std::setw(4) << _message->get_interface_version();
             if (!_force) {
+                VSOMEIP_DEBUG << "[someip_send_debug] routing-manager send rejected: remote service unavailable";
                 return false;
             }
         }
@@ -894,12 +895,17 @@ bool routing_manager_impl::send(client_t _client, const byte_t* _data, length_t 
                     its_target = ep_mgr_impl_->find_or_create_remote_client(its_service, _instance, _reliable);
                     if (its_target) {
                         is_sent = its_target->send(_data, _size);
+                        VSOMEIP_DEBUG << "[someip_send_debug] routing-manager remote endpoint submission "
+                                      << (is_sent ? "accepted" : "rejected") << ": service=" << std::hex << std::setfill('0')
+                                      << std::setw(4) << its_service << " instance=" << std::setw(4) << _instance << " method="
+                                      << std::setw(4) << its_method << " bytes=" << std::dec << _size;
                         if (is_sent) {
                             trace::header its_header;
                             if (its_header.prepare(its_target, true, _instance))
                                 tc_->trace(its_header.data_, VSOMEIP_TRACE_HEADER_SIZE, _data, _size);
                         }
                     } else {
+                        VSOMEIP_DEBUG << "[someip_send_debug] routing-manager remote endpoint submission rejected: no route";
                         const session_t its_session = bithelper::read_uint16_be(&_data[VSOMEIP_SESSION_POS_MIN]);
                         VSOMEIP_ERROR << "Routing info for remote service could not be found! (" << std::hex << std::setfill('0')
                                       << std::setw(4) << its_client << "): [" << std::setw(4) << its_service << "." << std::setw(4)

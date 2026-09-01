@@ -184,6 +184,9 @@ bool client_endpoint_impl<Protocol>::send(const uint8_t* _data, uint32_t _size) 
 #endif
 
     if (endpoint_impl<Protocol>::sending_blocked_ || !check_queue_limit(_data, _size)) {
+        VSOMEIP_DEBUG << "[someip_send_debug] endpoint queue rejected: "
+                      << (endpoint_impl<Protocol>::sending_blocked_ ? "sending blocked" : "queue limit exceeded")
+                      << " bytes=" << std::dec << _size;
         return false;
     }
 
@@ -265,6 +268,10 @@ bool client_endpoint_impl<Protocol>::send(const uint8_t* _data, uint32_t _size) 
 
     // STEP 10: restart dispatch timer with next departure time
     start_dispatch_timer(its_now);
+
+    VSOMEIP_DEBUG << "[someip_send_debug] endpoint queue accepted: service=" << std::hex << std::setfill('0') << std::setw(4)
+                  << its_service << " method=" << std::setw(4) << its_method << " bytes=" << std::dec << _size
+                  << " queued-bytes=" << queue_size_;
 
     return true;
 }
