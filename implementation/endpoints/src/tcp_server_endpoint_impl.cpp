@@ -452,6 +452,7 @@ void tcp_server_endpoint_impl::connection::receive() {
             return;
         }
         size_t left_buffer_size = its_capacity - recv_buffer_size_;
+        const std::size_t its_missing_capacity = missing_capacity_;
         try {
             if (missing_capacity_) {
                 if (missing_capacity_ > MESSAGE_SIZE_UNLIMITED) {
@@ -484,9 +485,16 @@ void tcp_server_endpoint_impl::connection::receive() {
             // don't start receiving again
             return;
         }
+        VSOMEIP_DEBUG << "[vsomeip_receive_debug] async_receive scheduled: local=" << get_address_port_local()
+                      << " remote=" << get_address_port_remote() << " buffered=" << recv_buffer_size_
+                      << " capacity=" << recv_buffer_.capacity() << " requested_bytes=" << left_buffer_size
+                      << " requested_for_missing_bytes=" << its_missing_capacity;
         socket_.async_receive(boost::asio::buffer(&recv_buffer_[recv_buffer_size_], left_buffer_size),
                               std::bind(&tcp_server_endpoint_impl::connection::receive_cbk, shared_from_this(), std::placeholders::_1,
                                         std::placeholders::_2));
+    } else {
+        VSOMEIP_DEBUG << "[vsomeip_receive_debug] async_receive not scheduled because socket is closed: local=" << get_address_port_local()
+                      << " remote=" << get_address_port_remote();
     }
 }
 
@@ -581,6 +589,8 @@ bool tcp_server_endpoint_impl::connection::is_magic_cookie(size_t _offset) const
 
 void tcp_server_endpoint_impl::connection::receive_cbk(boost::system::error_code const& _error, std::size_t _bytes) {
     if (_error == boost::asio::error::operation_aborted) {
+        VSOMEIP_DEBUG << "[vsomeip_receive_debug] async_receive aborted: local=" << get_address_port_local()
+                      << " remote=" << get_address_port_remote();
         // endpoint was stopped
         return;
     }
@@ -599,6 +609,10 @@ void tcp_server_endpoint_impl::connection::receive_cbk(boost::system::error_code
     VSOMEIP_INFO << msg.str();
 #endif
     std::unique_lock its_lock(socket_mutex_);
+    VSOMEIP_DEBUG << "[vsomeip_receive_debug] async_receive completed: local=" << get_address_port_local()
+                  << " remote=" << get_address_port_remote() << " error=" << _error.message()
+                  << " error_value=" << _error.value() << " bytes=" << _bytes
+                  << " buffered_before=" << recv_buffer_size_;
     std::shared_ptr<routing_host> its_host = its_server->routing_host_.lock();
     if (its_host) {
         const std::size_t its_received_offset = recv_buffer_size_;
@@ -625,9 +639,20 @@ void tcp_server_endpoint_impl::connection::receive_cbk(boost::system::error_code
                 uint32_t current_message_size = static_cast<uint32_t>(read_message_size);
                 has_full_message = (current_message_size > VSOMEIP_RETURN_CODE_POS && current_message_size <= recv_buffer_size_);
                 if (has_full_message) {
+                    VSOMEIP_DEBUG << "[vsomeip_receive_debug] complete SOME/IP frame: local=" << get_address_port_local()
+                                  << " remote=" << get_address_port_remote() << " frame_bytes=" << current_message_size
+                                  << " buffered_bytes=" << recv_buffer_size_ << " service=0x" << std::hex << std::setfill('0')
+                                  << std::setw(4) << bithelper::read_uint16_be(&recv_buffer_[its_iteration_gap + VSOMEIP_SERVICE_POS_MIN])
+                                  << " method=0x" << std::setw(4)
+                                  << bithelper::read_uint16_be(&recv_buffer_[its_iteration_gap + VSOMEIP_METHOD_POS_MIN]) << " client=0x"
+                                  << std::setw(4) << bithelper::read_uint16_be(&recv_buffer_[its_iteration_gap + VSOMEIP_CLIENT_POS_MIN])
+                                  << " session=0x" << std::setw(4)
+                                  << bithelper::read_uint16_be(&recv_buffer_[its_iteration_gap + VSOMEIP_SESSION_POS_MIN]);
                     bool needs_forwarding(true);
                     if (is_magic_cookie(its_iteration_gap)) {
                         use_magic_cookies_ = true;
+                        VSOMEIP_DEBUG << "[vsomeip_receive_debug] magic cookie consumed: local=" << get_address_port_local()
+                                      << " remote=" << get_address_port_remote() << " cookie_bytes=" << current_message_size;
                     } else {
                         if (use_magic_cookies_) {
                             uint32_t its_offset = its_server->find_magic_cookie(&recv_buffer_[its_iteration_gap], recv_buffer_size_);
@@ -647,6 +672,9 @@ void tcp_server_endpoint_impl::connection::receive_cbk(boost::system::error_code
                                 }
                                 current_message_size = its_offset;
                                 needs_forwarding = false;
+                                VSOMEIP_DEBUG << "[vsomeip_receive_debug] routing handoff skipped while resynchronizing at magic cookie: "
+                                              << "local=" << get_address_port_local() << " remote=" << get_address_port_remote()
+                                              << " discarded_bytes=" << current_message_size;
                             }
                         }
                     }
@@ -664,17 +692,25 @@ void tcp_server_endpoint_impl::connection::receive_cbk(boost::system::error_code
                             }
                         }
                         if (!use_magic_cookies_) {
+                            VSOMEIP_DEBUG << "[vsomeip_receive_debug] routing handoff: local=" << get_address_port_local()
+                                          << " remote=" << get_address_port_remote() << " frame_bytes=" << current_message_size;
                             its_lock.unlock();
                             its_host->on_message(&recv_buffer_[its_iteration_gap], current_message_size, its_server.get(), false,
                                                  VSOMEIP_ROUTING_CLIENT, nullptr, remote_address_, remote_port_);
                             its_lock.lock();
+                            VSOMEIP_DEBUG << "[vsomeip_receive_debug] routing handoff returned: local=" << get_address_port_local()
+                                          << " remote=" << get_address_port_remote() << " frame_bytes=" << current_message_size;
                         } else {
                             // Only call on_message without a magic cookie in front of the buffer!
                             if (!is_magic_cookie(its_iteration_gap)) {
+                                VSOMEIP_DEBUG << "[vsomeip_receive_debug] routing handoff: local=" << get_address_port_local()
+                                              << " remote=" << get_address_port_remote() << " frame_bytes=" << current_message_size;
                                 its_lock.unlock();
                                 its_host->on_message(&recv_buffer_[its_iteration_gap], current_message_size, its_server.get(), false,
                                                      VSOMEIP_ROUTING_CLIENT, nullptr, remote_address_, remote_port_);
                                 its_lock.lock();
+                                VSOMEIP_DEBUG << "[vsomeip_receive_debug] routing handoff returned: local=" << get_address_port_local()
+                                              << " remote=" << get_address_port_remote() << " frame_bytes=" << current_message_size;
                             }
                         }
                     }
@@ -798,6 +834,13 @@ void tcp_server_endpoint_impl::connection::receive_cbk(boost::system::error_code
                         wait_until_sent(boost::asio::error::operation_aborted);
                         return;
                     }
+
+                    if (recv_buffer_size_ > 0) {
+                        VSOMEIP_DEBUG << "[vsomeip_receive_debug] incomplete SOME/IP frame: local=" << get_address_port_local()
+                                      << " remote=" << get_address_port_remote() << " buffer_offset=" << its_iteration_gap
+                                      << " buffered_bytes=" << recv_buffer_size_ << " expected_frame_bytes=" << current_message_size
+                                      << " bytes_needed=" << missing_capacity_;
+                    }
                 }
             } while (has_full_message && recv_buffer_size_);
             if (its_iteration_gap) {
@@ -811,9 +854,26 @@ void tcp_server_endpoint_impl::connection::receive_cbk(boost::system::error_code
                 }
             }
 
+            VSOMEIP_DEBUG << "[vsomeip_receive_debug] receive parse complete: local=" << get_address_port_local()
+                          << " remote=" << get_address_port_remote() << " consumed_bytes=" << its_iteration_gap
+                          << " buffered_for_next_receive=" << recv_buffer_size_ << " bytes_needed=" << missing_capacity_;
+
             its_lock.unlock();
             receive();
         }
+    } else {
+        VSOMEIP_WARNING
+                << "[vsomeip_receive_debug] async_receive result ignored and receiver not rearmed because routing host is unavailable: "
+                << "local=" << get_address_port_local() << " remote=" << get_address_port_remote() << " error=" << _error.message()
+                << " error_value=" << _error.value() << " bytes=" << _bytes;
+    }
+    if (_error) {
+        VSOMEIP_WARNING << "[vsomeip_receive_debug] async_receive failed and receiver will not be rearmed: local="
+                        << get_address_port_local() << " remote=" << get_address_port_remote() << " error=" << _error.message()
+                        << " error_value=" << _error.value() << " bytes=" << _bytes;
+    } else if (_bytes == 0) {
+        VSOMEIP_WARNING << "[vsomeip_receive_debug] async_receive completed with zero bytes and receiver will not be rearmed: local="
+                        << get_address_port_local() << " remote=" << get_address_port_remote();
     }
     if (_error == boost::asio::error::eof || _error == boost::asio::error::connection_reset || _error == boost::asio::error::timed_out) {
         if (_error == boost::asio::error::timed_out) {
