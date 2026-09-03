@@ -8,6 +8,7 @@ cc_library(
         ],
     ),
     local_defines = ["BOOST_ALL_NO_LIB"],
+    defines = ["BOOST_ASIO_HAS_QNX_POLL=1"],
     include_prefix = ".",
     visibility = ["//visibility:public"],
 )

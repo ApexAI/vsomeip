@@ -1,0 +1,728 @@
+diff --git a/boost/asio/detail/config.hpp b/boost/asio/detail/config.hpp
+index 076d383bd..f51871cf6 100644
+--- a/boost/asio/detail/config.hpp
++++ b/boost/asio/detail/config.hpp
+@@ -1736,6 +1736,15 @@
+ # endif // !defined(BOOST_ASIO_HAS_DEV_POLL)
+ #endif // defined(__sun)
+ 
++// QNX: poll.
++#if defined(__QNX__)
++# if !defined(BOOST_ASIO_HAS_QNX_POLL)
++#  if !defined(BOOST_ASIO_DISABLE_QNX_POLL)
++#   define BOOST_ASIO_HAS_QNX_POLL 1
++#  endif // !defined(BOOST_ASIO_DISABLE_QNX_POLL)
++# endif // !defined(BOOST_ASIO_HAS_QNX_POLL)
++#endif // defined(__QNX__)
++
+ // Serial ports.
+ #if !defined(BOOST_ASIO_HAS_SERIAL_PORT)
+ # if defined(BOOST_ASIO_HAS_IOCP) \
+diff --git a/boost/asio/detail/impl/qnx_poll_reactor.hpp b/boost/asio/detail/impl/qnx_poll_reactor.hpp
+new file mode 100644
+index 000000000..7966f29c9
+--- /dev/null
++++ b/boost/asio/detail/impl/qnx_poll_reactor.hpp
+@@ -0,0 +1,109 @@
++//
++// detail/impl/qnx_poll_reactor.hpp
++// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++//
++// Copyright (c) 2003-2023 Christopher M. Kohlhoff (chris at kohlhoff dot com)
++//
++// Distributed under the Boost Software License, Version 1.0. (See accompanying
++// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
++//
++
++#ifndef BOOST_ASIO_DETAIL_IMPL_QNX_POLL_REACTOR_HPP
++#define BOOST_ASIO_DETAIL_IMPL_QNX_POLL_REACTOR_HPP
++
++#include <boost/asio/detail/config.hpp>
++
++#if defined(BOOST_ASIO_HAS_QNX_POLL)
++
++#include <boost/asio/detail/scheduler.hpp>
++
++#include <boost/asio/detail/push_options.hpp>
++
++namespace boost {
++namespace asio {
++namespace detail {
++
++inline void qnx_poll_reactor::post_immediate_completion(
++    operation* op, bool is_continuation) const
++{
++  scheduler_.post_immediate_completion(op, is_continuation);
++}
++
++template <typename Time_Traits>
++void qnx_poll_reactor::add_timer_queue(timer_queue<Time_Traits>& queue)
++{
++  do_add_timer_queue(queue);
++}
++
++template <typename Time_Traits>
++void qnx_poll_reactor::remove_timer_queue(timer_queue<Time_Traits>& queue)
++{
++  do_remove_timer_queue(queue);
++}
++
++template <typename Time_Traits>
++void qnx_poll_reactor::schedule_timer(timer_queue<Time_Traits>& queue,
++    const typename Time_Traits::time_type& time,
++    typename timer_queue<Time_Traits>::per_timer_data& timer, wait_op* op)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++
++  if (shutdown_)
++  {
++    scheduler_.post_immediate_completion(op, false);
++    return;
++  }
++
++  bool earliest = queue.enqueue_timer(time, timer, op);
++  scheduler_.work_started();
++  if (earliest)
++    interrupter_.interrupt();
++}
++
++template <typename Time_Traits>
++std::size_t qnx_poll_reactor::cancel_timer(timer_queue<Time_Traits>& queue,
++    typename timer_queue<Time_Traits>::per_timer_data& timer,
++    std::size_t max_cancelled)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  op_queue<operation> ops;
++  std::size_t n = queue.cancel_timer(timer, ops, max_cancelled);
++  lock.unlock();
++  scheduler_.post_deferred_completions(ops);
++  return n;
++}
++
++template <typename Time_Traits>
++void qnx_poll_reactor::cancel_timer_by_key(timer_queue<Time_Traits>& queue,
++    typename timer_queue<Time_Traits>::per_timer_data* timer,
++    void* cancellation_key)
++{
++  mutex::scoped_lock lock(mutex_);
++  op_queue<operation> ops;
++  queue.cancel_timer_by_key(timer, ops, cancellation_key);
++  lock.unlock();
++  scheduler_.post_deferred_completions(ops);
++}
++
++template <typename Time_Traits>
++void qnx_poll_reactor::move_timer(timer_queue<Time_Traits>& queue,
++    typename timer_queue<Time_Traits>::per_timer_data& target,
++    typename timer_queue<Time_Traits>::per_timer_data& source)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  op_queue<operation> ops;
++  queue.cancel_timer(target, ops);
++  queue.move_timer(target, source);
++  lock.unlock();
++  scheduler_.post_deferred_completions(ops);
++}
++
++} // namespace detail
++} // namespace asio
++} // namespace boost
++
++#include <boost/asio/detail/pop_options.hpp>
++
++#endif // defined(BOOST_ASIO_HAS_QNX_POLL)
++
++#endif // BOOST_ASIO_DETAIL_IMPL_QNX_POLL_REACTOR_HPP
+diff --git a/boost/asio/detail/impl/qnx_poll_reactor.ipp b/boost/asio/detail/impl/qnx_poll_reactor.ipp
+new file mode 100644
+index 000000000..1927069e1
+--- /dev/null
++++ b/boost/asio/detail/impl/qnx_poll_reactor.ipp
+@@ -0,0 +1,294 @@
++//
++// detail/impl/qnx_poll_reactor.ipp
++// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++//
++// Copyright (c) 2003-2023 Christopher M. Kohlhoff (chris at kohlhoff dot com)
++//
++// Distributed under the Boost Software License, Version 1.0. (See accompanying
++// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
++//
++
++#ifndef BOOST_ASIO_DETAIL_IMPL_QNX_POLL_REACTOR_IPP
++#define BOOST_ASIO_DETAIL_IMPL_QNX_POLL_REACTOR_IPP
++
++#include <boost/asio/detail/config.hpp>
++
++#if defined(BOOST_ASIO_HAS_QNX_POLL)
++
++#include <poll.h>
++#include <vector>
++#include <boost/asio/detail/hash_map.hpp>
++#include <boost/asio/detail/qnx_poll_reactor.hpp>
++#include <boost/asio/detail/scheduler.hpp>
++
++#include <boost/asio/detail/push_options.hpp>
++
++namespace boost {
++namespace asio {
++namespace detail {
++
++qnx_poll_reactor::qnx_poll_reactor(boost::asio::execution_context& ctx)
++  : execution_context_service_base<qnx_poll_reactor>(ctx),
++    scheduler_(use_service<scheduler>(ctx)),
++    mutex_(),
++    interrupter_(),
++    shutdown_(false)
++{
++}
++
++qnx_poll_reactor::~qnx_poll_reactor()
++{
++  shutdown();
++}
++
++void qnx_poll_reactor::shutdown()
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  shutdown_ = true;
++  lock.unlock();
++
++  op_queue<operation> ops;
++  for (int i = 0; i < max_ops; ++i)
++    op_queue_[i].get_all_operations(ops);
++  timer_queues_.get_all_timers(ops);
++  scheduler_.abandon_operations(ops);
++}
++
++void qnx_poll_reactor::notify_fork(
++    boost::asio::execution_context::fork_event fork_ev)
++{
++  if (fork_ev == boost::asio::execution_context::fork_child)
++    interrupter_.recreate();
++}
++
++void qnx_poll_reactor::init_task()
++{
++  scheduler_.init_task();
++}
++
++int qnx_poll_reactor::register_descriptor(socket_type,
++    qnx_poll_reactor::per_descriptor_data&)
++{
++  return 0;
++}
++
++int qnx_poll_reactor::register_internal_descriptor(
++    int op_type, socket_type descriptor,
++    qnx_poll_reactor::per_descriptor_data&, reactor_op* op)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  op_queue_[op_type].enqueue_operation(descriptor, op);
++  interrupter_.interrupt();
++  return 0;
++}
++
++void qnx_poll_reactor::move_descriptor(socket_type,
++    qnx_poll_reactor::per_descriptor_data&,
++    qnx_poll_reactor::per_descriptor_data&)
++{
++}
++
++void qnx_poll_reactor::call_post_immediate_completion(
++    operation* op, bool is_continuation, const void* self)
++{
++  static_cast<const qnx_poll_reactor*>(self)->post_immediate_completion(
++      op, is_continuation);
++}
++
++void qnx_poll_reactor::start_op(int op_type, socket_type descriptor,
++    qnx_poll_reactor::per_descriptor_data&, reactor_op* op,
++    bool is_continuation, bool,
++    void (*on_immediate)(operation*, bool, const void*),
++    const void* immediate_arg)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++
++  if (shutdown_)
++  {
++    on_immediate(op, is_continuation, immediate_arg);
++    return;
++  }
++
++  bool first = op_queue_[op_type].enqueue_operation(descriptor, op);
++  scheduler_.work_started();
++  if (first)
++    interrupter_.interrupt();
++}
++
++void qnx_poll_reactor::cancel_ops(socket_type descriptor,
++    qnx_poll_reactor::per_descriptor_data&)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  cancel_ops_unlocked(descriptor, boost::asio::error::operation_aborted);
++}
++
++void qnx_poll_reactor::cancel_ops_by_key(socket_type descriptor,
++    qnx_poll_reactor::per_descriptor_data&,
++    int op_type, void* cancellation_key)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  op_queue<operation> ops;
++  bool need_interrupt = op_queue_[op_type].cancel_operations_by_key(
++      descriptor, ops, cancellation_key, boost::asio::error::operation_aborted);
++  scheduler_.post_deferred_completions(ops);
++  if (need_interrupt)
++    interrupter_.interrupt();
++}
++
++void qnx_poll_reactor::deregister_descriptor(socket_type descriptor,
++    qnx_poll_reactor::per_descriptor_data&, bool)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  cancel_ops_unlocked(descriptor, boost::asio::error::operation_aborted);
++}
++
++void qnx_poll_reactor::deregister_internal_descriptor(
++    socket_type descriptor, qnx_poll_reactor::per_descriptor_data&)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++  op_queue<operation> ops;
++  for (int i = 0; i < max_ops; ++i)
++    op_queue_[i].cancel_operations(descriptor, ops);
++}
++
++void qnx_poll_reactor::cleanup_descriptor_data(
++    qnx_poll_reactor::per_descriptor_data&)
++{
++}
++
++void qnx_poll_reactor::run(long usec, op_queue<operation>& ops)
++{
++  boost::asio::detail::mutex::scoped_lock lock(mutex_);
++
++  bool have_work_to_do = !timer_queues_.all_empty();
++  for (int i = 0; i < max_ops; ++i)
++    have_work_to_do = have_work_to_do || !op_queue_[i].empty();
++
++  if (!usec && !have_work_to_do)
++    return;
++
++  std::vector< ::pollfd> events;
++  hash_map<socket_type, std::size_t> event_index;
++
++  ::pollfd interrupter_event = { 0, 0, 0 };
++  interrupter_event.fd = interrupter_.read_descriptor();
++  interrupter_event.events = POLLIN;
++  events.push_back(interrupter_event);
++  event_index.insert(std::make_pair(interrupter_event.fd, 0));
++
++  static const short event_masks[max_ops] = { POLLIN, POLLOUT, POLLPRI };
++  for (int op_type = 0; op_type < max_ops; ++op_type)
++  {
++    reactor_op_queue<socket_type>::iterator i = op_queue_[op_type].begin();
++    while (i != op_queue_[op_type].end())
++    {
++      socket_type descriptor = i->first;
++      hash_map<socket_type, std::size_t>::iterator index =
++        event_index.find(descriptor);
++      if (index == event_index.end())
++      {
++        ::pollfd event = { 0, 0, 0 };
++        event.fd = descriptor;
++        event.events = event_masks[op_type];
++        std::size_t new_index = events.size();
++        events.push_back(event);
++        event_index.insert(std::make_pair(descriptor, new_index));
++      }
++      else
++      {
++        events[index->second].events |= event_masks[op_type];
++      }
++      ++i;
++    }
++  }
++
++  int timeout = 0;
++  if (usec != 0)
++  {
++    timeout = (usec < 0) ? -1 : static_cast<int>((usec - 1) / 1000 + 1);
++    timeout = get_timeout(timeout);
++  }
++
++  lock.unlock();
++  int num_events = ::poll(&events[0], events.size(), timeout);
++
++  if (num_events > 0 && events[0].revents != 0)
++  {
++    if (!interrupter_.reset())
++      interrupter_.recreate();
++  }
++
++  lock.lock();
++
++  if (num_events > 0)
++  {
++    for (std::size_t i = 1; i < events.size(); ++i)
++    {
++      short revents = events[i].revents;
++      if (revents == 0)
++        continue;
++
++      socket_type descriptor = events[i].fd;
++
++      // Process exception operations first so out-of-band data is handled
++      // before normal data.
++      if (revents & (POLLPRI | POLLERR | POLLHUP | POLLNVAL))
++        op_queue_[except_op].perform_operations(descriptor, ops);
++
++      if (revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL))
++        op_queue_[read_op].perform_operations(descriptor, ops);
++
++      if (revents & (POLLOUT | POLLERR | POLLHUP | POLLNVAL))
++        op_queue_[write_op].perform_operations(descriptor, ops);
++    }
++  }
++
++  timer_queues_.get_ready_timers(ops);
++}
++
++void qnx_poll_reactor::interrupt()
++{
++  interrupter_.interrupt();
++}
++
++void qnx_poll_reactor::do_add_timer_queue(timer_queue_base& queue)
++{
++  mutex::scoped_lock lock(mutex_);
++  timer_queues_.insert(&queue);
++}
++
++void qnx_poll_reactor::do_remove_timer_queue(timer_queue_base& queue)
++{
++  mutex::scoped_lock lock(mutex_);
++  timer_queues_.erase(&queue);
++}
++
++int qnx_poll_reactor::get_timeout(int msec)
++{
++  const int max_msec = 5 * 60 * 1000;
++  return timer_queues_.wait_duration_msec(
++      (msec < 0 || max_msec < msec) ? max_msec : msec);
++}
++
++void qnx_poll_reactor::cancel_ops_unlocked(socket_type descriptor,
++    const boost::system::error_code& ec)
++{
++  bool need_interrupt = false;
++  op_queue<operation> ops;
++  for (int i = 0; i < max_ops; ++i)
++    need_interrupt = op_queue_[i].cancel_operations(
++        descriptor, ops, ec) || need_interrupt;
++  scheduler_.post_deferred_completions(ops);
++  if (need_interrupt)
++    interrupter_.interrupt();
++}
++
++} // namespace detail
++} // namespace asio
++} // namespace boost
++
++#include <boost/asio/detail/pop_options.hpp>
++
++#endif // defined(BOOST_ASIO_HAS_QNX_POLL)
++
++#endif // BOOST_ASIO_DETAIL_IMPL_QNX_POLL_REACTOR_IPP
+diff --git a/boost/asio/detail/impl/select_reactor.hpp b/boost/asio/detail/impl/select_reactor.hpp
+index b7d862a0a..ed6bb7ec2 100644
+--- a/boost/asio/detail/impl/select_reactor.hpp
++++ b/boost/asio/detail/impl/select_reactor.hpp
+@@ -21,6 +21,7 @@
+   || (!defined(BOOST_ASIO_HAS_DEV_POLL) \
+       && !defined(BOOST_ASIO_HAS_EPOLL) \
+       && !defined(BOOST_ASIO_HAS_KQUEUE) \
++      && !defined(BOOST_ASIO_HAS_QNX_POLL) \
+       && !defined(BOOST_ASIO_WINDOWS_RUNTIME))
+ 
+ #if defined(BOOST_ASIO_HAS_IOCP)
+@@ -121,6 +122,7 @@ void select_reactor::move_timer(timer_queue<Time_Traits>& queue,
+        //   || (!defined(BOOST_ASIO_HAS_DEV_POLL)
+        //       && !defined(BOOST_ASIO_HAS_EPOLL)
+        //       && !defined(BOOST_ASIO_HAS_KQUEUE)
++       //       && !defined(BOOST_ASIO_HAS_QNX_POLL)
+        //       && !defined(BOOST_ASIO_WINDOWS_RUNTIME))
+ 
+ #endif // BOOST_ASIO_DETAIL_IMPL_SELECT_REACTOR_HPP
+diff --git a/boost/asio/detail/impl/select_reactor.ipp b/boost/asio/detail/impl/select_reactor.ipp
+index 33887e244..de2259240 100644
+--- a/boost/asio/detail/impl/select_reactor.ipp
++++ b/boost/asio/detail/impl/select_reactor.ipp
+@@ -21,6 +21,7 @@
+   || (!defined(BOOST_ASIO_HAS_DEV_POLL) \
+       && !defined(BOOST_ASIO_HAS_EPOLL) \
+       && !defined(BOOST_ASIO_HAS_KQUEUE) \
++      && !defined(BOOST_ASIO_HAS_QNX_POLL) \
+       && !defined(BOOST_ASIO_WINDOWS_RUNTIME))
+ 
+ #include <boost/asio/detail/fd_set_adapter.hpp>
+@@ -397,6 +398,7 @@ void select_reactor::cancel_ops_unlocked(socket_type descriptor,
+        //   || (!defined(BOOST_ASIO_HAS_DEV_POLL)
+        //       && !defined(BOOST_ASIO_HAS_EPOLL)
+        //       && !defined(BOOST_ASIO_HAS_KQUEUE))
++       //       && !defined(BOOST_ASIO_HAS_QNX_POLL)
+        //       && !defined(BOOST_ASIO_WINDOWS_RUNTIME))
+ 
+ #endif // BOOST_ASIO_DETAIL_IMPL_SELECT_REACTOR_IPP
+diff --git a/boost/asio/detail/qnx_poll_reactor.hpp b/boost/asio/detail/qnx_poll_reactor.hpp
+new file mode 100644
+index 000000000..80110e23e
+--- /dev/null
++++ b/boost/asio/detail/qnx_poll_reactor.hpp
+@@ -0,0 +1,167 @@
++//
++// detail/qnx_poll_reactor.hpp
++// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
++//
++// Copyright (c) 2003-2023 Christopher M. Kohlhoff (chris at kohlhoff dot com)
++//
++// Distributed under the Boost Software License, Version 1.0. (See accompanying
++// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
++//
++
++#ifndef BOOST_ASIO_DETAIL_QNX_POLL_REACTOR_HPP
++#define BOOST_ASIO_DETAIL_QNX_POLL_REACTOR_HPP
++
++#if defined(_MSC_VER) && (_MSC_VER >= 1200)
++# pragma once
++#endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
++
++#include <boost/asio/detail/config.hpp>
++
++#if defined(BOOST_ASIO_HAS_QNX_POLL)
++
++#include <cstddef>
++#include <boost/asio/detail/limits.hpp>
++#include <boost/asio/detail/mutex.hpp>
++#include <boost/asio/detail/op_queue.hpp>
++#include <boost/asio/detail/reactor_op.hpp>
++#include <boost/asio/detail/reactor_op_queue.hpp>
++#include <boost/asio/detail/scheduler_task.hpp>
++#include <boost/asio/detail/select_interrupter.hpp>
++#include <boost/asio/detail/socket_types.hpp>
++#include <boost/asio/detail/timer_queue_base.hpp>
++#include <boost/asio/detail/timer_queue_set.hpp>
++#include <boost/asio/detail/wait_op.hpp>
++#include <boost/asio/execution_context.hpp>
++
++#include <boost/asio/detail/push_options.hpp>
++
++namespace boost {
++namespace asio {
++namespace detail {
++
++class qnx_poll_reactor
++  : public execution_context_service_base<qnx_poll_reactor>,
++    public scheduler_task
++{
++public:
++  enum op_types { read_op = 0, write_op = 1,
++    connect_op = 1, except_op = 2, max_ops = 3 };
++
++  struct per_descriptor_data
++  {
++  };
++
++  BOOST_ASIO_DECL qnx_poll_reactor(boost::asio::execution_context& ctx);
++  BOOST_ASIO_DECL ~qnx_poll_reactor();
++
++  BOOST_ASIO_DECL void shutdown();
++
++  BOOST_ASIO_DECL void notify_fork(
++      boost::asio::execution_context::fork_event fork_ev);
++
++  BOOST_ASIO_DECL void init_task();
++
++  BOOST_ASIO_DECL int register_descriptor(socket_type, per_descriptor_data&);
++
++  BOOST_ASIO_DECL int register_internal_descriptor(
++      int op_type, socket_type descriptor,
++      per_descriptor_data& descriptor_data, reactor_op* op);
++
++  BOOST_ASIO_DECL void move_descriptor(socket_type descriptor,
++      per_descriptor_data& target_descriptor_data,
++      per_descriptor_data& source_descriptor_data);
++
++  void post_immediate_completion(operation* op, bool is_continuation) const;
++
++  BOOST_ASIO_DECL static void call_post_immediate_completion(
++      operation* op, bool is_continuation, const void* self);
++
++  BOOST_ASIO_DECL void start_op(int op_type, socket_type descriptor,
++      per_descriptor_data&, reactor_op* op,
++      bool is_continuation, bool allow_speculative,
++      void (*on_immediate)(operation*, bool, const void*),
++      const void* immediate_arg);
++
++  void start_op(int op_type, socket_type descriptor,
++      per_descriptor_data& descriptor_data, reactor_op* op,
++      bool is_continuation, bool allow_speculative)
++  {
++    start_op(op_type, descriptor, descriptor_data,
++        op, is_continuation, allow_speculative,
++        &qnx_poll_reactor::call_post_immediate_completion, this);
++  }
++
++  BOOST_ASIO_DECL void cancel_ops(socket_type descriptor, per_descriptor_data&);
++
++  BOOST_ASIO_DECL void cancel_ops_by_key(socket_type descriptor,
++      per_descriptor_data& descriptor_data,
++      int op_type, void* cancellation_key);
++
++  BOOST_ASIO_DECL void deregister_descriptor(socket_type descriptor,
++      per_descriptor_data&, bool closing);
++
++  BOOST_ASIO_DECL void deregister_internal_descriptor(
++      socket_type descriptor, per_descriptor_data&);
++
++  BOOST_ASIO_DECL void cleanup_descriptor_data(per_descriptor_data&);
++
++  template <typename Time_Traits>
++  void add_timer_queue(timer_queue<Time_Traits>& queue);
++
++  template <typename Time_Traits>
++  void remove_timer_queue(timer_queue<Time_Traits>& queue);
++
++  template <typename Time_Traits>
++  void schedule_timer(timer_queue<Time_Traits>& queue,
++      const typename Time_Traits::time_type& time,
++      typename timer_queue<Time_Traits>::per_timer_data& timer, wait_op* op);
++
++  template <typename Time_Traits>
++  std::size_t cancel_timer(timer_queue<Time_Traits>& queue,
++      typename timer_queue<Time_Traits>::per_timer_data& timer,
++      std::size_t max_cancelled = (std::numeric_limits<std::size_t>::max)());
++
++  template <typename Time_Traits>
++  void cancel_timer_by_key(timer_queue<Time_Traits>& queue,
++      typename timer_queue<Time_Traits>::per_timer_data* timer,
++      void* cancellation_key);
++
++  template <typename Time_Traits>
++  void move_timer(timer_queue<Time_Traits>& queue,
++      typename timer_queue<Time_Traits>::per_timer_data& target,
++      typename timer_queue<Time_Traits>::per_timer_data& source);
++
++  BOOST_ASIO_DECL void run(long usec, op_queue<operation>& ops);
++
++  BOOST_ASIO_DECL void interrupt();
++
++private:
++  BOOST_ASIO_DECL void do_add_timer_queue(timer_queue_base& queue);
++  BOOST_ASIO_DECL void do_remove_timer_queue(timer_queue_base& queue);
++  BOOST_ASIO_DECL int get_timeout(int msec);
++
++  BOOST_ASIO_DECL void cancel_ops_unlocked(socket_type descriptor,
++      const boost::system::error_code& ec);
++
++  scheduler& scheduler_;
++  boost::asio::detail::mutex mutex_;
++  select_interrupter interrupter_;
++  reactor_op_queue<socket_type> op_queue_[max_ops];
++  timer_queue_set timer_queues_;
++  bool shutdown_;
++};
++
++} // namespace detail
++} // namespace asio
++} // namespace boost
++
++#include <boost/asio/detail/pop_options.hpp>
++
++#include <boost/asio/detail/impl/qnx_poll_reactor.hpp>
++#if defined(BOOST_ASIO_HEADER_ONLY)
++# include <boost/asio/detail/impl/qnx_poll_reactor.ipp>
++#endif // defined(BOOST_ASIO_HEADER_ONLY)
++
++#endif // defined(BOOST_ASIO_HAS_QNX_POLL)
++
++#endif // BOOST_ASIO_DETAIL_QNX_POLL_REACTOR_HPP
+diff --git a/boost/asio/detail/reactor.hpp b/boost/asio/detail/reactor.hpp
+index 76ca947ee..365dc9820 100644
+--- a/boost/asio/detail/reactor.hpp
++++ b/boost/asio/detail/reactor.hpp
+@@ -27,6 +27,8 @@
+ # include <boost/asio/detail/kqueue_reactor.hpp>
+ #elif defined(BOOST_ASIO_HAS_DEV_POLL)
+ # include <boost/asio/detail/dev_poll_reactor.hpp>
++#elif defined(BOOST_ASIO_HAS_QNX_POLL)
++# include <boost/asio/detail/qnx_poll_reactor.hpp>
+ #else
+ # include <boost/asio/detail/select_reactor.hpp>
+ #endif
+@@ -45,6 +47,8 @@ typedef epoll_reactor reactor;
+ typedef kqueue_reactor reactor;
+ #elif defined(BOOST_ASIO_HAS_DEV_POLL)
+ typedef dev_poll_reactor reactor;
++#elif defined(BOOST_ASIO_HAS_QNX_POLL)
++typedef qnx_poll_reactor reactor;
+ #else
+ typedef select_reactor reactor;
+ #endif
+diff --git a/boost/asio/detail/select_reactor.hpp b/boost/asio/detail/select_reactor.hpp
+index a4b8b81ab..b9d5b67dc 100644
+--- a/boost/asio/detail/select_reactor.hpp
++++ b/boost/asio/detail/select_reactor.hpp
+@@ -21,6 +21,7 @@
+   || (!defined(BOOST_ASIO_HAS_DEV_POLL) \
+       && !defined(BOOST_ASIO_HAS_EPOLL) \
+       && !defined(BOOST_ASIO_HAS_KQUEUE) \
++      && !defined(BOOST_ASIO_HAS_QNX_POLL) \
+       && !defined(BOOST_ASIO_WINDOWS_RUNTIME))
+ 
+ #include <cstddef>
+@@ -288,6 +289,7 @@ private:
+        //   || (!defined(BOOST_ASIO_HAS_DEV_POLL)
+        //       && !defined(BOOST_ASIO_HAS_EPOLL)
+        //       && !defined(BOOST_ASIO_HAS_KQUEUE)
++       //       && !defined(BOOST_ASIO_HAS_QNX_POLL)
+        //       && !defined(BOOST_ASIO_WINDOWS_RUNTIME))
+ 
+ #endif // BOOST_ASIO_DETAIL_SELECT_REACTOR_HPP
+diff --git a/boost/asio/detail/timer_scheduler.hpp b/boost/asio/detail/timer_scheduler.hpp
+index b8372bf53..c869b5e06 100644
+--- a/boost/asio/detail/timer_scheduler.hpp
++++ b/boost/asio/detail/timer_scheduler.hpp
+@@ -30,6 +30,8 @@
+ # include <boost/asio/detail/kqueue_reactor.hpp>
+ #elif defined(BOOST_ASIO_HAS_DEV_POLL)
+ # include <boost/asio/detail/dev_poll_reactor.hpp>
++#elif defined(BOOST_ASIO_HAS_QNX_POLL)
++# include <boost/asio/detail/qnx_poll_reactor.hpp>
+ #else
+ # include <boost/asio/detail/select_reactor.hpp>
+ #endif
+diff --git a/boost/asio/detail/timer_scheduler_fwd.hpp b/boost/asio/detail/timer_scheduler_fwd.hpp
+index e99eda74e..86f820429 100644
+--- a/boost/asio/detail/timer_scheduler_fwd.hpp
++++ b/boost/asio/detail/timer_scheduler_fwd.hpp
+@@ -33,6 +33,8 @@ typedef class epoll_reactor timer_scheduler;
+ typedef class kqueue_reactor timer_scheduler;
+ #elif defined(BOOST_ASIO_HAS_DEV_POLL)
+ typedef class dev_poll_reactor timer_scheduler;
++#elif defined(BOOST_ASIO_HAS_QNX_POLL)
++typedef class qnx_poll_reactor timer_scheduler;
+ #else
+ typedef class select_reactor timer_scheduler;
+ #endif
+diff --git a/boost/asio/impl/src.hpp b/boost/asio/impl/src.hpp
+index 6e4904ee8..317a9d4e6 100644
+--- a/boost/asio/impl/src.hpp
++++ b/boost/asio/impl/src.hpp
+@@ -50,6 +50,7 @@
+ #include <boost/asio/detail/impl/posix_serial_port_service.ipp>
+ #include <boost/asio/detail/impl/posix_thread.ipp>
+ #include <boost/asio/detail/impl/posix_tss_ptr.ipp>
++#include <boost/asio/detail/impl/qnx_poll_reactor.ipp>
+ #include <boost/asio/detail/impl/reactive_descriptor_service.ipp>
+ #include <boost/asio/detail/impl/reactive_socket_service_base.ipp>
+ #include <boost/asio/detail/impl/resolver_service_base.ipp>

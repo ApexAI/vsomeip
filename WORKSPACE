@@ -15,6 +15,10 @@ http_archive(
         version = BOOST_VERSION,
         version_underscore = BOOST_VERSION_us,
     )],
+    patches = [
+        "@vsomeip//:boost_qnx_poll_support.patch",
+    ],
+    patch_args = ["-p1"],
 )
 
 GOOGLETEST_VERSION = "1.11.0"
